@@ -121,62 +121,63 @@ trigger:
     subtype: brightness_stop
     id: z2m_brightness_stop
 
-  # ZHA triggers
-  - platform: device
-    device_id: !input button_device
-    domain: zha
-    type: remote_button_short_press
-    subtype: turn_on
+  # ZHA triggers - using event platform
+  - platform: event
+    event_type: zha_event
+    event_data:
+      device_id: !input button_device
+      command: "on"
     id: zha_on
     
-  - platform: device
-    device_id: !input button_device
-    domain: zha
-    type: remote_button_double_press
-    subtype: turn_on
+  - platform: event
+    event_type: zha_event
+    event_data:
+      device_id: !input button_device
+      command: "off"
     id: zha_off
     
-  - platform: device
-    device_id: !input button_device
-    domain: zha
-    type: remote_button_long_press
-    subtype: turn_on
+  - platform: event
+    event_type: zha_event
+    event_data:
+      device_id: !input button_device
+      command: move_with_on_off
+      args: [0, 83]
     id: zha_brightness_move_up
     
-  - platform: device
-    device_id: !input button_device
-    domain: zha
-    type: remote_button_long_release
-    subtype: turn_on
+  - platform: event
+    event_type: zha_event
+    event_data:
+      device_id: !input button_device
+      command: stop
     id: zha_brightness_stop
 
-  # deCONZ triggers
-  - platform: device
-    device_id: !input button_device
-    domain: deconz
-    type: remote_button_short_press
-    subtype: turn_on
+  # deCONZ triggers - using event platform
+  - platform: event
+    event_type: deconz_event
+    event_data:
+      device_id: !input button_device
+      event: 1002
     id: deconz_on
     
-  - platform: device
-    device_id: !input button_device
-    domain: deconz
-    type: remote_button_double_press
-    subtype: turn_on
+  - platform: event
+    event_type: deconz_event
+    event_data:
+      device_id: !input button_device
+      event: 1004
     id: deconz_off
     
-  - platform: device
-    device_id: !input button_device
-    domain: deconz
-    type: remote_button_long_press
-    subtype: turn_on
+  - platform: event
+    event_type: deconz_event
+    event_data:
+      device_id: !input button_device
+      event: 1001
     id: deconz_brightness_move_up
     
-  - platform: device
-    device_id: !input button_device
-    domain: deconz
-    type: remote_button_long_release
-    subtype: turn_on
+  - platform: event
+    event_type: deconz_event
+    event_data:
+      device_id: !input button_device
+      event: 1003
     id: deconz_brightness_stop
 
 variables:
