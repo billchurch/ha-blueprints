@@ -6,7 +6,7 @@
 
 Control shades, blinds, curtains, or any cover entity using an IKEA Shortcut button (model E1812).
 
-![IKEA Shortcut Button](https://www.zigbee2mqtt.io/images/devices/E1812.png)
+<img width="384" height="384" alt="shortcutbutton-med" src="https://github.com/user-attachments/assets/61d3abea-7a66-48d9-9371-a77b1144095a" />
 
 ## 📥 Installation
 
