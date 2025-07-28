@@ -1,0 +1,241 @@
+blueprint:
+  name: IKEA Shortcut Button Shade Control v1.0
+  description: >
+    # 🪟 IKEA Shortcut Button Shade Control
+    
+    **Version: 1.0**
+    
+    Control shades, blinds, or any cover entity with an IKEA Shortcut button (E1812).
+    
+    <details>
+    <summary><b>Features:</b> - Click here to expand</summary>
+
+
+      - Works with Zigbee2MQTT, ZHA, and deCONZ integrations
+      - Simple one-button control for shades
+      - Supports any Home Assistant cover entity
+      - Fixed button actions for consistent operation
+
+    </details>
+    
+    <details>
+    <summary><b>Button Actions:</b> - Click here to expand</summary>
+
+
+      **IKEA E1812 Actions:**
+      - Single Press: Open cover
+      - Double Press: Close cover
+      - Long Press: Set to custom position (configurable)
+      - Hold Release: Stop cover movement (optional)
+
+    </details>
+    
+    <details>
+    <summary><b>Setup Help:</b> - Click here to expand</summary>
+
+
+      **Prerequisites:**
+      1. IKEA E1812 Shortcut button paired with your Zigbee coordinator
+      2. Working Zigbee2MQTT, ZHA, or deCONZ integration
+      3. Cover entity available in Home Assistant
+      
+      **Supported Integrations:**
+      - **Zigbee2MQTT**: Exposes as MQTT device
+      - **ZHA**: Native Home Assistant integration
+      - **deCONZ**: ConBee/RaspBee integration
+
+    </details>
+  domain: automation
+  author: billchurch
+  source_url: https://github.com/billchurch/ha-blueprints
+  input:
+    button_device:
+      name: IKEA Shortcut Button
+      description: Select your IKEA E1812 Shortcut button
+      selector:
+        device:
+          filter:
+            - integration: mqtt
+              manufacturer: IKEA
+              model: TRADFRI shortcut button (E1812)
+            - integration: mqtt
+              manufacturer: IKEA  
+              model: TRADFRI shortcut button
+            - integration: zha
+              manufacturer: IKEA of Sweden
+              model: TRADFRI SHORTCUT Button
+            - integration: deconz
+              manufacturer: IKEA of Sweden
+              model: TRADFRI SHORTCUT Button
+          multiple: false
+    cover_entity:
+      name: Cover
+      description: The shade, blind, or cover to control
+      selector:
+        entity:
+          domain: cover
+          multiple: false
+    long_press_position:
+      name: Long Press Position
+      description: Position to set when long pressing (0=closed, 100=fully open)
+      default: 100
+      selector:
+        number:
+          min: 0
+          max: 100
+          unit_of_measurement: "%"
+    ignore_release:
+      name: Ignore Release Action
+      description: When enabled, holding the button will set the position without stopping when released
+      default: false
+      selector:
+        boolean:
+
+trigger:
+  # Zigbee2MQTT triggers
+  - platform: device
+    device_id: !input button_device
+    domain: mqtt
+    type: action
+    subtype: "on"
+    id: z2m_on
+    
+  - platform: device
+    device_id: !input button_device
+    domain: mqtt
+    type: action
+    subtype: "off"
+    id: z2m_off
+    
+  - platform: device
+    device_id: !input button_device
+    domain: mqtt
+    type: action
+    subtype: brightness_move_up
+    id: z2m_brightness_move_up
+    
+  - platform: device
+    device_id: !input button_device
+    domain: mqtt
+    type: action
+    subtype: brightness_stop
+    id: z2m_brightness_stop
+
+  # ZHA triggers
+  - platform: device
+    device_id: !input button_device
+    domain: zha
+    type: remote_button_short_press
+    subtype: turn_on
+    id: zha_on
+    
+  - platform: device
+    device_id: !input button_device
+    domain: zha
+    type: remote_button_double_press
+    subtype: turn_on
+    id: zha_off
+    
+  - platform: device
+    device_id: !input button_device
+    domain: zha
+    type: remote_button_long_press
+    subtype: turn_on
+    id: zha_brightness_move_up
+    
+  - platform: device
+    device_id: !input button_device
+    domain: zha
+    type: remote_button_long_release
+    subtype: turn_on
+    id: zha_brightness_stop
+
+  # deCONZ triggers
+  - platform: device
+    device_id: !input button_device
+    domain: deconz
+    type: remote_button_short_press
+    subtype: turn_on
+    id: deconz_on
+    
+  - platform: device
+    device_id: !input button_device
+    domain: deconz
+    type: remote_button_double_press
+    subtype: turn_on
+    id: deconz_off
+    
+  - platform: device
+    device_id: !input button_device
+    domain: deconz
+    type: remote_button_long_press
+    subtype: turn_on
+    id: deconz_brightness_move_up
+    
+  - platform: device
+    device_id: !input button_device
+    domain: deconz
+    type: remote_button_long_release
+    subtype: turn_on
+    id: deconz_brightness_stop
+
+variables:
+  cover: !input cover_entity
+  position: !input long_press_position
+  ignore_release: !input ignore_release
+
+action:
+  - choose:
+      # Single press - Open cover
+      - conditions:
+          - condition: trigger
+            id: 
+              - z2m_on
+              - zha_on
+              - deconz_on
+        sequence:
+          - service: cover.open_cover
+            target:
+              entity_id: !input cover_entity
+
+      # Double press - Close cover
+      - conditions:
+          - condition: trigger
+            id: 
+              - z2m_off
+              - zha_off
+              - deconz_off
+        sequence:
+          - service: cover.close_cover
+            target:
+              entity_id: !input cover_entity
+
+      # Long press - Set to configured position
+      - conditions:
+          - condition: trigger
+            id: 
+              - z2m_brightness_move_up
+              - zha_brightness_move_up
+              - deconz_brightness_move_up
+        sequence:
+          - service: cover.set_cover_position
+            data:
+              position: "{{ position }}"
+            target:
+              entity_id: !input cover_entity
+
+      # Hold release - Stop cover (only if not ignoring release)
+      - conditions:
+          - condition: trigger
+            id: 
+              - z2m_brightness_stop
+              - zha_brightness_stop
+              - deconz_brightness_stop
+          - condition: template
+            value_template: "{{ not ignore_release }}"
+        sequence:
+          - service: cover.stop_cover
+            target:
+              entity_id: !input cover_entity
+
+mode: single
