@@ -6,7 +6,7 @@
 
 Smart bathroom exhaust fan control based on humidity levels with manual override support.
 
-![Bath Fan Placeholder](https://placehold.co/600x400/1b4f72/ffffff?text=Bath+Fan+Automation)
+<img width="512" height="512" alt="image" src="https://github.com/user-attachments/assets/b0e096cb-31ed-4720-8656-5a1506f2934e" />
 
 ## 📥 Installation
 
