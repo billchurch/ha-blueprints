@@ -1,0 +1,16 @@
+# macOS
+.DS_Store
+
+# Plans and design docs
+docs/plans/
+
+# Editor files
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+
+# Environment
+.env
+.env.*

@@ -1,0 +1,319 @@
+blueprint:
+  name: Temperature Sensor Notifications v1.0
+  description: >
+    # Temperature Sensor Notifications
+
+    **Version: 1.0**
+
+    Send alerts when temperature sensors exceed or drop below configurable thresholds.
+
+    <details>
+    <summary><b>Features:</b> - Click here to expand</summary>
+
+
+      - Multi-sensor monitoring with high and low thresholds
+      - iOS notifications with configurable interruption levels
+      - Persistent UI notifications
+      - Text-to-Speech announcements
+      - Customizable repeat notifications while threshold exceeded
+      - Action buttons for acknowledgment
+
+    </details>
+
+  domain: automation
+  author: billchurch
+  source_url: https://github.com/billchurch/ha-blueprints
+  input:
+    temperature_sensors:
+      name: Temperature Sensors
+      description: Select temperature sensors to monitor
+      selector:
+        entity:
+          filter:
+            device_class: temperature
+          multiple: true
+    notify_devices:
+      name: Notification Devices
+      description: Mobile devices to receive notifications
+      selector:
+        device:
+          filter:
+            integration: mobile_app
+          multiple: true
+    enable_high_threshold:
+      name: Enable High Threshold
+      description: Enable notifications when temperature exceeds the high threshold
+      default: false
+      selector:
+        boolean:
+    high_threshold:
+      name: High Temperature Threshold
+      description: Trigger when temperature rises above this value
+      default: 80
+      selector:
+        number:
+          min: -40
+          max: 200
+          unit_of_measurement: "\xB0"
+          mode: slider
+    enable_low_threshold:
+      name: Enable Low Threshold
+      description: Enable notifications when temperature drops below the low threshold
+      default: false
+      selector:
+        boolean:
+    low_threshold:
+      name: Low Temperature Threshold
+      description: Trigger when temperature drops below this value
+      default: 32
+      selector:
+        number:
+          min: -40
+          max: 200
+          unit_of_measurement: "\xB0"
+          mode: slider
+    notification_title:
+      name: Notification Title
+      description: Title for temperature alert notifications
+      default: "Temperature Alert!"
+      selector:
+        text:
+    notification_message:
+      name: Notification Message
+      description: >
+        Message template. Available variables:
+        {{ trigger.to_state.name }} - Sensor name
+        {{ trigger.entity_id }} - Sensor entity ID
+        {{ trigger.to_state.state }} - Current state
+        {{ trigger.id }} - Trigger ID (high or low)
+        {{ area_name(trigger.entity_id) }} - Sensor area
+      default: "Temperature {{ 'above' if trigger.id == 'high' else 'below' }} threshold: {{ trigger.to_state.state }}\xB0 detected by {{ trigger.to_state.name }} in {{ area_name(trigger.entity_id) | default('Unknown Location', true) }}"
+      selector:
+        text:
+          multiline: true
+    enable_actions:
+      name: Enable Action Buttons
+      description: Add Acknowledge and View buttons to notifications
+      default: false
+      selector:
+        boolean:
+    repeat_enabled:
+      name: Repeat Notifications
+      description: Send notifications repeatedly while temperature is beyond threshold
+      default: false
+      selector:
+        boolean:
+    repeat_interval:
+      name: Repeat Interval
+      description: Minutes between repeated notifications
+      default: 30
+      selector:
+        number:
+          min: 5
+          max: 1440
+          unit_of_measurement: "min"
+          mode: slider
+    interruption_level:
+      name: iOS Interruption Level
+      description: >
+        iOS notification interruption level.
+        Critical alerts will bypass Do Not Disturb and silent mode.
+      default: "active"
+      selector:
+        select:
+          options:
+            - label: "Passive (Minimal)"
+              value: "passive"
+            - label: "Active (Default)"
+              value: "active"
+            - label: "Time Sensitive"
+              value: "time-sensitive"
+            - label: "Critical (Bypass DND)"
+              value: "critical"
+    enable_ui_notification:
+      name: Enable UI Notification
+      description: Show persistent notification in Home Assistant UI
+      default: false
+      selector:
+        boolean:
+    enable_tts:
+      name: Enable TTS Announcements
+      description: Announce temperature alerts via text-to-speech
+      default: false
+      selector:
+        boolean:
+    tts_service:
+      name: TTS Service Provider
+      description: Select the text-to-speech service to use
+      default: []
+      selector:
+        entity:
+          filter:
+            domain: tts
+    tts_targets:
+      name: TTS Media Players
+      description: Media players for TTS announcements
+      selector:
+        entity:
+          domain: media_player
+          multiple: true
+    tts_message:
+      name: TTS Announcement Message
+      description: >
+        Custom TTS announcement message. Available variables:
+        {{ trigger.to_state.name }} - Sensor name
+        {{ trigger.id }} - Trigger ID (high or low)
+        {{ area_name(trigger.entity_id) }} - Sensor area
+      default: "Alert! Temperature {{ 'above' if trigger.id == 'high' else 'below' }} threshold at {{ trigger.to_state.state }} degrees, detected by {{ trigger.to_state.name }} in {{ area_name(trigger.entity_id) | default('Unknown Location', true) }}"
+      selector:
+        text:
+          multiline: true
+
+trigger:
+  - platform: numeric_state
+    id: "high"
+    entity_id: !input temperature_sensors
+    above: !input high_threshold
+  - platform: numeric_state
+    id: "low"
+    entity_id: !input temperature_sensors
+    below: !input low_threshold
+
+condition:
+  - condition: template
+    value_template: >
+      {% if trigger.id == 'high' %}
+        {{ enable_high_threshold }}
+      {% elif trigger.id == 'low' %}
+        {{ enable_low_threshold }}
+      {% else %}
+        {{ false }}
+      {% endif %}
+
+variables:
+  temperature_sensors: !input temperature_sensors
+  notify_devices: !input notify_devices
+  enable_high_threshold: !input enable_high_threshold
+  high_threshold: !input high_threshold
+  enable_low_threshold: !input enable_low_threshold
+  low_threshold: !input low_threshold
+  notification_title: !input notification_title
+  notification_message: !input notification_message
+  enable_actions: !input enable_actions
+  repeat_enabled: !input repeat_enabled
+  repeat_interval: !input repeat_interval
+  interruption_level: !input interruption_level
+  enable_ui_notification: !input enable_ui_notification
+  enable_tts: !input enable_tts
+  tts_service: !input tts_service
+  tts_targets: !input tts_targets
+  tts_message: !input tts_message
+
+action:
+  - variables:
+      notification_data:
+        tag: "temperature_{{ trigger.entity_id | replace('.', '_') }}"
+        group: "temperature_alerts"
+        importance: high
+        channel: temperature_alerts
+        ttl: 0
+        priority: high
+        persistent: true
+        sticky: true
+        clickAction: "/lovelace/{{ area_name(trigger.entity_id) | lower | replace(' ', '-') | default('home', true) }}"
+        push:
+          interruption-level: "{{ interruption_level }}"
+        actions: >
+          {% if enable_actions %}
+            [{
+              "action": "ACK_TEMP_{{ trigger.entity_id | replace('.', '_') | upper }}",
+              "title": "Acknowledge"
+            },
+            {
+              "action": "VIEW_TEMP_{{ trigger.entity_id | replace('.', '_') | upper }}",
+              "title": "View Sensor",
+              "uri": "/lovelace/{{ area_name(trigger.entity_id) | lower | replace(' ', '-') | default('home', true) }}"
+            }]
+          {% else %}
+            []
+          {% endif %}
+  - choose:
+      - conditions:
+          - condition: template
+            value_template: "{{ repeat_enabled }}"
+        sequence:
+          - repeat:
+              while:
+                - condition: template
+                  value_template: >
+                    {% set current = states(trigger.entity_id) | float %}
+                    {% if trigger.id == 'high' %}
+                      {{ current > high_threshold | float }}
+                    {% else %}
+                      {{ current < low_threshold | float }}
+                    {% endif %}
+              sequence:
+                - repeat:
+                    for_each: "{{ notify_devices }}"
+                    sequence:
+                      - service: notify.mobile_app_{{ device_attr(repeat.item, 'name') | replace(' ', '_') | replace('-', '_') | lower }}
+                        data:
+                          title: "{{ notification_title }}"
+                          message: "{{ notification_message }}"
+                          data: "{{ notification_data }}"
+                - choose:
+                    - conditions:
+                        - condition: template
+                          value_template: "{{ enable_ui_notification }}"
+                      sequence:
+                        - service: persistent_notification.create
+                          data:
+                            title: "{{ notification_title }}"
+                            message: "{{ notification_message }}"
+                            notification_id: "temperature_{{ trigger.entity_id | replace('.', '_') }}"
+                - choose:
+                    - conditions:
+                        - condition: template
+                          value_template: "{{ enable_tts }}"
+                      sequence:
+                        - action: tts.speak
+                          target:
+                            entity_id: !input tts_service
+                          data:
+                            media_player_entity_id: !input tts_targets
+                            message: "{{ tts_message }}"
+                - delay:
+                    minutes: "{{ repeat_interval }}"
+    default:
+      - repeat:
+          for_each: "{{ notify_devices }}"
+          sequence:
+            - service: notify.mobile_app_{{ device_attr(repeat.item, 'name') | replace(' ', '_') | replace('-', '_') | lower }}
+              data:
+                title: "{{ notification_title }}"
+                message: "{{ notification_message }}"
+                data: "{{ notification_data }}"
+      - choose:
+          - conditions:
+              - condition: template
+                value_template: "{{ enable_ui_notification }}"
+            sequence:
+              - service: persistent_notification.create
+                data:
+                  title: "{{ notification_title }}"
+                  message: "{{ notification_message }}"
+                  notification_id: "temperature_{{ trigger.entity_id | replace('.', '_') }}"
+      - choose:
+          - conditions:
+              - condition: template
+                value_template: "{{ enable_tts }}"
+            sequence:
+              - action: tts.speak
+                target:
+                  entity_id: !input tts_service
+                data:
+                  media_player_entity_id: !input tts_targets
+                  message: "{{ tts_message }}"
+
+mode: parallel
+max: 10
