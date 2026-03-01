@@ -1,0 +1,42 @@
+alias: Shade Office - Control via IKEA Button
+description: 'Controls shade using actions from zigbee2mqtt/button - office'
+mode: single
+trigger:
+  - platform: mqtt
+    topic: zigbee2mqtt/button - office
+condition: []
+action:
+  - choose:
+      - conditions:
+          - condition: template
+            value_template: "{{ trigger.payload_json.action == 'on' }}"
+        sequence:
+          - service: cover.open_cover
+            target:
+              entity_id: cover.shade_office
+
+      - conditions:
+          - condition: template
+            value_template: "{{ trigger.payload_json.action == 'off' }}"
+        sequence:
+          - service: cover.close_cover
+            target:
+              entity_id: cover.shade_office
+
+      - conditions:
+          - condition: template
+            value_template: "{{ trigger.payload_json.action == 'brightness_move_up' }}"
+        sequence:
+          - service: cover.set_cover_position
+            data:
+              position: 100
+            target:
+              entity_id: cover.shade_office
+
+      - conditions:
+          - condition: template
+            value_template: "{{ trigger.payload_json.action == 'brightness_stop' }}"
+        sequence:
+          - service: cover.stop_cover
+            target:
+              entity_id: cover.shade_office
