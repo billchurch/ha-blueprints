@@ -1,9 +1,9 @@
 blueprint:
-  name: Temperature Sensor Notifications v1.0
+  name: Temperature Sensor Notifications v1.1
   description: >
     # Temperature Sensor Notifications
 
-    **Version: 1.0**
+    **Version: 1.1**
 
     Send alerts when temperature sensors exceed or drop below configurable thresholds.
 
@@ -15,6 +15,7 @@ blueprint:
       - iOS notifications with configurable interruption levels
       - Persistent UI notifications
       - Text-to-Speech announcements
+      - Configurable trigger delay to prevent false alerts
       - Customizable repeat notifications while threshold exceeded
       - Action buttons for acknowledgment
 
@@ -71,6 +72,19 @@ blueprint:
           min: -40
           max: 200
           unit_of_measurement: "\xB0"
+          mode: slider
+    trigger_duration:
+      name: Trigger Duration
+      description: >
+        Minutes the temperature must remain beyond the threshold
+        before alerting. Prevents false alerts from brief spikes.
+        Set to 0 for immediate alerts.
+      default: 0
+      selector:
+        number:
+          min: 0
+          max: 60
+          unit_of_measurement: "min"
           mode: slider
     notification_title:
       name: Notification Title
@@ -174,10 +188,14 @@ trigger:
     id: "high"
     entity_id: !input temperature_sensors
     above: !input high_threshold
+    for:
+      minutes: !input trigger_duration
   - platform: numeric_state
     id: "low"
     entity_id: !input temperature_sensors
     below: !input low_threshold
+    for:
+      minutes: !input trigger_duration
 
 condition:
   - condition: template
@@ -197,6 +215,7 @@ variables:
   high_threshold: !input high_threshold
   enable_low_threshold: !input enable_low_threshold
   low_threshold: !input low_threshold
+  trigger_duration: !input trigger_duration
   notification_title: !input notification_title
   notification_message: !input notification_message
   enable_actions: !input enable_actions
