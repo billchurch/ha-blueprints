@@ -1,6 +1,6 @@
 # 🪟 Aqara Double Rocker Shade Control
 
-**Version:** 1.0  
+**Version:** 1.1  
 **Domain:** Automation  
 **Author:** billchurch  
 
@@ -67,7 +67,7 @@ trigger list.
 
 | Input | Description |
 | --- | --- |
-| **Aqara Double Rocker Button** | Select your paired WXKG07LM device |
+| **Aqara Double Rocker Button** | Your paired WXKG07LM, under its Z2M name |
 | **Cover** | Choose the cover entity to control |
 
 ### Optional Inputs
@@ -116,14 +116,29 @@ them.
 
 ### Device Not Appearing in the Picker
 
-The blueprint filters the device list to WXKG07LM devices reporting a
-manufacturer of `Aqara`, `Xiaomi`, or `LUMI`. Zigbee2MQTT's reported strings
-have changed across versions, so a newer or older release may report something
-else.
+The picker lists **every** Aqara/Xiaomi device that arrived over MQTT, not just
+WXKG07LM remotes. Look for whatever name you gave the remote in Zigbee2MQTT.
 
-Check the actual values under **Settings → Devices & Services → Devices →
-your button**, then either edit the `filter:` block in the blueprint YAML to
-match, or delete the `filter:` block entirely to show all MQTT devices.
+This is deliberate. Zigbee2MQTT does not put the `WXKG07LM` code in the field
+HA's `model:` filter reads. Its MQTT discovery payload is built from the
+device converter like so:
+
+```text
+manufacturer  <- converter vendor        "Aqara"
+model         <- converter description   "Wireless remote switch D1 (double rocker)"
+model_id      <- converter model         "WXKG07LM"
+```
+
+Older Zigbee2MQTT releases packed both into one string
+(`"Wireless remote switch D1 (double rocker) (WXKG07LM)"`), and `model_id`
+only exists on Zigbee2MQTT 1.39+ with Home Assistant 2024.8+. Filtering on
+`model: WXKG07LM` matched none of those shapes, which is why blueprint v1.0
+showed an empty picker. v1.1 filters on manufacturer alone so the remote is
+listed on every combination of versions.
+
+If the list is empty entirely, the remote is not paired with Zigbee2MQTT.
+This blueprint is Zigbee2MQTT-only — ZHA and deCONZ use a different integration
+and a different device-trigger scheme, so its triggers cannot match them.
 
 ### "Unknown Device Trigger" When Saving
 

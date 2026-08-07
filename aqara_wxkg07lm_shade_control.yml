@@ -1,9 +1,9 @@
 blueprint:
-  name: Aqara Double Rocker Shade Control v1.0
+  name: Aqara Double Rocker Shade Control v1.1
   description: >
     # 🪟 Aqara Double Rocker Shade Control
 
-    **Version: 1.0**
+    **Version: 1.1**
 
     Control shades, blinds, or any cover entity with one rocker of an Aqara
     WXKG07LM (D1 double rocker wireless remote switch) via Zigbee2MQTT.
@@ -47,6 +47,12 @@ blueprint:
       otherwise those triggers will not exist yet and the automation will fail
       to save.
 
+      **Device not in the list?** The picker shows every Aqara/Xiaomi device
+      that arrived over MQTT. Look for the name you gave the remote in
+      Zigbee2MQTT; its model reads "Wireless remote switch D1 (double rocker)"
+      rather than "WXKG07LM". If nothing appears at all, the remote is not
+      paired with Zigbee2MQTT — this blueprint does not support ZHA or deCONZ.
+
     </details>
   domain: automation
   author: billchurch
@@ -54,19 +60,25 @@ blueprint:
   input:
     button_device:
       name: Aqara Double Rocker Button
-      description: Select your Aqara WXKG07LM remote
+      description: >
+        Select your Aqara WXKG07LM remote. The list shows every Aqara/Xiaomi
+        device from Zigbee2MQTT — in Zigbee2MQTT this device is described as
+        "Wireless remote switch D1 (double rocker)".
       selector:
         device:
+          # Deliberately filtered by manufacturer only, not by model.
+          # Zigbee2MQTT sets the HA device registry `model` to the converter's
+          # *description* ("Wireless remote switch D1 (double rocker)") and puts
+          # the "WXKG07LM" code in `model_id`. Older Z2M packed both into one
+          # string, "<description> (WXKG07LM)". Filtering on `model: WXKG07LM`
+          # therefore matched nothing and left the picker empty.
           filter:
             - integration: mqtt
               manufacturer: Aqara
-              model: WXKG07LM
             - integration: mqtt
               manufacturer: Xiaomi
-              model: WXKG07LM
             - integration: mqtt
               manufacturer: LUMI
-              model: WXKG07LM
           multiple: false
     rocker:
       name: Rocker
