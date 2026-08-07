@@ -1,9 +1,9 @@
 blueprint:
-  name: Temperature Sensor Notifications v1.1
+  name: Temperature Sensor Notifications v1.2
   description: >
     # Temperature Sensor Notifications
 
-    **Version: 1.1**
+    **Version: 1.2**
 
     Send alerts when temperature sensors exceed or drop below configurable thresholds.
 
@@ -183,21 +183,21 @@ blueprint:
         text:
           multiline: true
 
-trigger:
-  - platform: numeric_state
+triggers:
+  - trigger: numeric_state
     id: "high"
     entity_id: !input temperature_sensors
     above: !input high_threshold
     for:
       minutes: !input trigger_duration
-  - platform: numeric_state
+  - trigger: numeric_state
     id: "low"
     entity_id: !input temperature_sensors
     below: !input low_threshold
     for:
       minutes: !input trigger_duration
 
-condition:
+conditions:
   - condition: template
     value_template: >
       {% if trigger.id == 'high' %}
@@ -228,10 +228,15 @@ variables:
   tts_targets: !input tts_targets
   tts_message: !input tts_message
 
-action:
+actions:
   - variables:
+      # Derived once here so the entity-id mangling and dashboard path are not
+      # repeated across the notification payload.
+      entity_slug: "{{ trigger.entity_id | replace('.', '_') }}"
+      action_id: "{{ trigger.entity_id | replace('.', '_') | upper }}"
+      click_url: "/lovelace/{{ area_name(trigger.entity_id) | lower | replace(' ', '-') | default('home', true) }}"
       notification_data:
-        tag: "temperature_{{ trigger.entity_id | replace('.', '_') }}"
+        tag: "temperature_{{ entity_slug }}"
         group: "temperature_alerts"
         importance: high
         channel: temperature_alerts
@@ -239,23 +244,18 @@ action:
         priority: high
         persistent: true
         sticky: true
-        clickAction: "/lovelace/{{ area_name(trigger.entity_id) | lower | replace(' ', '-') | default('home', true) }}"
+        clickAction: "{{ click_url }}"
         push:
           interruption-level: "{{ interruption_level }}"
+        # Rendered as a native list, not a JSON string, so the mobile app
+        # receives a real array.
         actions: >
-          {% if enable_actions %}
-            [{
-              "action": "ACK_TEMP_{{ trigger.entity_id | replace('.', '_') | upper }}",
-              "title": "Acknowledge"
-            },
-            {
-              "action": "VIEW_TEMP_{{ trigger.entity_id | replace('.', '_') | upper }}",
-              "title": "View Sensor",
-              "uri": "/lovelace/{{ area_name(trigger.entity_id) | lower | replace(' ', '-') | default('home', true) }}"
-            }]
-          {% else %}
-            []
-          {% endif %}
+          {{ [{"action": "ACK_TEMP_" ~ action_id,
+               "title": "Acknowledge"},
+              {"action": "VIEW_TEMP_" ~ action_id,
+               "title": "View Sensor",
+               "uri": click_url}]
+             if enable_actions else [] }}
   - choose:
       - conditions:
           - condition: template
@@ -275,7 +275,7 @@ action:
                 - repeat:
                     for_each: "{{ notify_devices }}"
                     sequence:
-                      - service: notify.mobile_app_{{ device_attr(repeat.item, 'name') | replace(' ', '_') | replace('-', '_') | lower }}
+                      - action: notify.mobile_app_{{ device_attr(repeat.item, 'name') | slugify }}
                         data:
                           title: "{{ notification_title }}"
                           message: "{{ notification_message }}"
@@ -285,11 +285,11 @@ action:
                         - condition: template
                           value_template: "{{ enable_ui_notification }}"
                       sequence:
-                        - service: persistent_notification.create
+                        - action: persistent_notification.create
                           data:
                             title: "{{ notification_title }}"
                             message: "{{ notification_message }}"
-                            notification_id: "temperature_{{ trigger.entity_id | replace('.', '_') }}"
+                            notification_id: "temperature_{{ entity_slug }}"
                 - choose:
                     - conditions:
                         - condition: template
@@ -307,7 +307,7 @@ action:
       - repeat:
           for_each: "{{ notify_devices }}"
           sequence:
-            - service: notify.mobile_app_{{ device_attr(repeat.item, 'name') | replace(' ', '_') | replace('-', '_') | lower }}
+            - action: notify.mobile_app_{{ device_attr(repeat.item, 'name') | slugify }}
               data:
                 title: "{{ notification_title }}"
                 message: "{{ notification_message }}"
@@ -317,11 +317,11 @@ action:
               - condition: template
                 value_template: "{{ enable_ui_notification }}"
             sequence:
-              - service: persistent_notification.create
+              - action: persistent_notification.create
                 data:
                   title: "{{ notification_title }}"
                   message: "{{ notification_message }}"
-                  notification_id: "temperature_{{ trigger.entity_id | replace('.', '_') }}"
+                  notification_id: "temperature_{{ entity_slug }}"
       - choose:
           - conditions:
               - condition: template

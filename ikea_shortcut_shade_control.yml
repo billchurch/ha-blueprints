@@ -1,9 +1,9 @@
 blueprint:
-  name: IKEA Shortcut Button Shade Control v1.0
+  name: IKEA Shortcut Button Shade Control v1.1
   description: >
     # 🪟 IKEA Shortcut Button Shade Control
     
-    **Version: 1.0**
+    **Version: 1.1**
     
     Control shades, blinds, or any cover entity with an IKEA Shortcut button (E1812).
     
@@ -91,52 +91,52 @@ blueprint:
       selector:
         boolean:
 
-trigger:
+triggers:
   # Zigbee2MQTT triggers
-  - platform: device
+  - trigger: device
     device_id: !input button_device
     domain: mqtt
     type: action
     subtype: "on"
     id: z2m_on
     
-  - platform: device
+  - trigger: device
     device_id: !input button_device
     domain: mqtt
     type: action
     subtype: "off"
     id: z2m_off
     
-  - platform: device
+  - trigger: device
     device_id: !input button_device
     domain: mqtt
     type: action
     subtype: brightness_move_up
     id: z2m_brightness_move_up
     
-  - platform: device
+  - trigger: device
     device_id: !input button_device
     domain: mqtt
     type: action
     subtype: brightness_stop
     id: z2m_brightness_stop
 
-  # ZHA triggers - using event platform
-  - platform: event
+  # ZHA triggers - using the event trigger
+  - trigger: event
     event_type: zha_event
     event_data:
       device_id: !input button_device
       command: "on"
     id: zha_on
     
-  - platform: event
+  - trigger: event
     event_type: zha_event
     event_data:
       device_id: !input button_device
       command: "off"
     id: zha_off
     
-  - platform: event
+  - trigger: event
     event_type: zha_event
     event_data:
       device_id: !input button_device
@@ -144,36 +144,36 @@ trigger:
       args: [0, 83]
     id: zha_brightness_move_up
     
-  - platform: event
+  - trigger: event
     event_type: zha_event
     event_data:
       device_id: !input button_device
       command: stop
     id: zha_brightness_stop
 
-  # deCONZ triggers - using event platform
-  - platform: event
+  # deCONZ triggers - using the event trigger
+  - trigger: event
     event_type: deconz_event
     event_data:
       device_id: !input button_device
       event: 1002
     id: deconz_on
     
-  - platform: event
+  - trigger: event
     event_type: deconz_event
     event_data:
       device_id: !input button_device
       event: 1004
     id: deconz_off
     
-  - platform: event
+  - trigger: event
     event_type: deconz_event
     event_data:
       device_id: !input button_device
       event: 1001
     id: deconz_brightness_move_up
     
-  - platform: event
+  - trigger: event
     event_type: deconz_event
     event_data:
       device_id: !input button_device
@@ -185,7 +185,7 @@ variables:
   position: !input long_press_position
   ignore_release: !input ignore_release
 
-action:
+actions:
   - choose:
       # Single press - Open cover
       - conditions:
@@ -195,7 +195,7 @@ action:
               - zha_on
               - deconz_on
         sequence:
-          - service: cover.open_cover
+          - action: cover.open_cover
             target:
               entity_id: !input cover_entity
 
@@ -207,7 +207,7 @@ action:
               - zha_off
               - deconz_off
         sequence:
-          - service: cover.close_cover
+          - action: cover.close_cover
             target:
               entity_id: !input cover_entity
 
@@ -219,7 +219,7 @@ action:
               - zha_brightness_move_up
               - deconz_brightness_move_up
         sequence:
-          - service: cover.set_cover_position
+          - action: cover.set_cover_position
             data:
               position: "{{ position }}"
             target:
@@ -235,7 +235,7 @@ action:
           - condition: template
             value_template: "{{ not ignore_release }}"
         sequence:
-          - service: cover.stop_cover
+          - action: cover.stop_cover
             target:
               entity_id: !input cover_entity
 

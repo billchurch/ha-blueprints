@@ -1,57 +1,86 @@
 blueprint:
-  name: Humidity-Controlled Fan with Manual Override v1.0
+  name: Humidity-Controlled Fan with Manual Override v2.0
   description: >
     # 💨 Bath Fan Automation
-    
-    **Version: 1.0**
-    
+
+    **Version: 2.0**
+
     Smart bathroom fan control based on humidity with manual override support.
-    
+
     <details>
     <summary><b>Features:</b> - Click here to expand</summary>
 
 
       - Automatic humidity-based fan control
-      - Manual override with configurable timer
+      - Manual override backed by a timer helper, so it survives restarts
+      - Distinguishes a real manual press from the automation's own turn-on
       - Compares bathroom vs house humidity
       - Smart delta threshold detection
-      - Dashboard control via helpers (optional)
-      - Prevents conflicts between manual and auto control
+      - Turning the fan off by hand cancels the override immediately
 
     </details>
-    
+
+    <details>
+    <summary><b>Upgrading from v1.x:</b> - Click here to expand</summary>
+
+
+      **This version is a breaking change.** The manual override is now tracked
+      by a timer helper instead of an input boolean plus an in-automation delay.
+      The old approach lost its override state whenever Home Assistant
+      restarted, and could not tell a manual press apart from the automation
+      turning the fan on itself.
+
+      To migrate:
+
+      1. Create a Timer helper (Settings → Devices & Services → Helpers →
+         Create Helper → Timer). Any name works; leave its duration at zero,
+         since this blueprint sets the duration when it starts the timer.
+      2. Re-import this blueprint and edit your automation.
+      3. Select the new timer in the **Manual Override Timer** field.
+      4. The old **Manual Override Flag** input is now ignored and can be left
+         as-is. Once every automation using this blueprint is migrated, you may
+         delete the input boolean helper it pointed at.
+
+    </details>
+
     <details>
     <summary><b>Setup Help:</b> - Click here to expand</summary>
 
 
-      **Required Helpers (Optional but Recommended):**
-      
-      1. Create an Input Boolean for manual override tracking:
+      **Required Helper:**
+
+      1. Create a Timer for manual override tracking:
          - Go to Settings → Devices & Services → Helpers
-         - Click "Create Helper" → Toggle
+         - Click "Create Helper" → Timer
          - Name: "Bath Fan Manual Override" (or similar)
-         
+         - Duration: leave at 0:00:00 — this blueprint sets it at runtime
+
+      **Optional Helper:**
+
       2. Create an Input Number for override duration:
          - Click "Create Helper" → Number
          - Name: "Bath Fan Override Duration"
          - Min: 5, Max: 60, Step: 1
          - Unit: minutes
-         
+
       **Dashboard Card Example:**
+
       ```yaml
       type: entities
       title: Bath Fan Control
       entities:
         - entity: switch.bathroom_exhaust_fan
           name: Fan Switch
-        - entity: input_boolean.bath_fan_manual_override
-          name: Manual Override Active
+        - entity: timer.bath_fan_manual_override
+          name: Manual Override
         - entity: input_number.bath_fan_override_duration
           name: Override Duration (minutes)
       ```
 
     </details>
   domain: automation
+  author: billchurch
+  source_url: https://github.com/billchurch/ha-blueprints
   input:
     fan_switch:
       name: Fan Switch
@@ -73,22 +102,17 @@ blueprint:
         entity:
           domain: sensor
           device_class: humidity
-    manual_override_flag:
-      name: Manual Override Flag (Optional)
-      description: Input boolean to track manual override state (optional).
-      default:
+    override_timer:
+      name: Manual Override Timer
+      description: >
+        Timer helper used to track the manual override. Create one under
+        Settings → Devices & Services → Helpers → Timer. Its configured
+        duration does not matter; this automation sets the duration each time
+        it starts the timer.
       selector:
         entity:
           filter:
-            domain: input_boolean
-    override_duration_helper:
-      name: Override Duration Helper (Optional)
-      description: Input number to allow user-adjustable override duration (optional).
-      default:
-      selector:
-        entity:
-          filter:
-            domain: input_number
+            domain: timer
     humidity_on_threshold:
       name: Humidity On Threshold
       description: Humidity percentage that triggers the fan ON.
@@ -129,33 +153,75 @@ blueprint:
           max: 60
           unit_of_measurement: minutes
           step: 1
+    override_duration_helper:
+      name: Override Duration Helper (Optional)
+      description: >
+        Input number to allow user-adjustable override duration. When set, it
+        takes precedence over the Manual Override Duration above.
+      default:
+      selector:
+        entity:
+          filter:
+            domain: input_number
+    manual_override_flag:
+      name: Manual Override Flag (Deprecated — ignored)
+      description: >
+        No longer used. The Manual Override Timer replaces it. This input is
+        kept only so automations created with v1.x continue to load after
+        re-importing the blueprint; it has no effect and will be removed in a
+        future version. You can safely leave it empty.
+      default:
+      selector:
+        entity:
+          filter:
+            domain: input_boolean
 
-trigger:
-  - platform: numeric_state
+triggers:
+  - trigger: numeric_state
     entity_id: !input bathroom_humidity
     above: !input humidity_on_threshold
     id: humidity_high
-  - platform: numeric_state
+
+  - trigger: numeric_state
     entity_id: !input bathroom_humidity
     below: !input humidity_off_threshold
     id: humidity_low
-  - platform: state
+
+  - trigger: state
     entity_id: !input fan_switch
     to: "on"
     id: manual_on
+
+  - trigger: state
+    entity_id: !input fan_switch
+    to: "off"
+    id: manual_off
+
+  - trigger: event
+    event_type: timer.finished
+    event_data:
+      entity_id: !input override_timer
+    id: override_expired
 
 variables:
   fan_switch: !input fan_switch
   bathroom_humidity: !input bathroom_humidity
   indoor_humidity: !input indoor_humidity
+  override_timer: !input override_timer
   humidity_on_threshold: !input humidity_on_threshold
   humidity_off_threshold: !input humidity_off_threshold
   humidity_delta: !input humidity_delta
-  manual_override_flag: !input manual_override_flag
-  override_duration_helper: !input override_duration_helper
   manual_override_duration: !input manual_override_duration
+  override_duration_helper: !input override_duration_helper
+  # Single source of truth for "a manual override is in effect". Unlike the
+  # v1.x in-action delay, this survives a Home Assistant restart.
+  override_active: "{{ is_state(override_timer, 'active') }}"
+  # Minutes the override should last, preferring the optional helper.
+  override_minutes: >
+    {{ states(override_duration_helper) | float(manual_override_duration)
+       if override_duration_helper else manual_override_duration }}
 
-action:
+actions:
   - choose:
       # 💨 Turn fan on due to humidity
       - conditions:
@@ -163,63 +229,73 @@ action:
             id: humidity_high
           - condition: template
             value_template: >
-              {{ states(bathroom_humidity)|float - states(indoor_humidity)|float > humidity_delta }}
+              {{ states(bathroom_humidity) | float - states(indoor_humidity) | float > humidity_delta }}
           - condition: template
-            value_template: >
-              {{ manual_override_flag is none or is_state(manual_override_flag, 'off') }}
+            value_template: "{{ not override_active }}"
         sequence:
-          - service: switch.turn_on
+          - action: switch.turn_on
             target:
               entity_id: "{{ fan_switch }}"
 
-      # 🌬 Manual turn on detected
+      # 🌬 Manual turn on detected — start the override timer.
+      #
+      # The context check is what distinguishes a real press from this
+      # automation's own switch.turn_on above. A parent_id of none means no
+      # automation or script caused the change, so it was a physical switch or
+      # a UI interaction. Without this, the branch above would start an
+      # override every time humidity turned the fan on.
       - conditions:
           - condition: trigger
             id: manual_on
           - condition: template
-            value_template: >
-              {{ manual_override_flag is none or is_state(manual_override_flag, 'off') }}
+            value_template: "{{ trigger.to_state.context.parent_id is none }}"
         sequence:
-          - choose:
-              - conditions:
-                  - condition: template
-                    value_template: "{{ manual_override_flag != none }}"
-                sequence:
-                  - service: input_boolean.turn_on
-                    target:
-                      entity_id: "{{ manual_override_flag }}"
-          - delay:
-              minutes: >
-                {{ states(override_duration_helper) | float if override_duration_helper != none else manual_override_duration }}
-          - choose:
-              - conditions:
-                  - condition: template
-                    value_template: "{{ manual_override_flag != none }}"
-                sequence:
-                  - service: input_boolean.turn_off
-                    target:
-                      entity_id: "{{ manual_override_flag }}"
-          # 🚦 Check humidity before turning fan off
-          - choose:
-              - conditions:
-                  - condition: template
-                    value_template: >
-                      {{ states(bathroom_humidity)|float < humidity_on_threshold }}
-                sequence:
-                  - service: switch.turn_off
-                    target:
-                      entity_id: "{{ fan_switch }}"
+          - action: timer.start
+            target:
+              entity_id: "{{ override_timer }}"
+            data:
+              duration: >
+                {{ (override_minutes | float(20) * 60) | int }}
+
+      # 🛑 Manual turn off — cancel any override so humidity control resumes
+      - conditions:
+          - condition: trigger
+            id: manual_off
+          - condition: template
+            value_template: "{{ trigger.to_state.context.parent_id is none }}"
+          - condition: template
+            value_template: "{{ override_active }}"
+        sequence:
+          - action: timer.cancel
+            target:
+              entity_id: "{{ override_timer }}"
 
       # 💡 Turn fan off if humidity dropped & no manual override
       - conditions:
           - condition: trigger
             id: humidity_low
           - condition: template
-            value_template: >
-              {{ manual_override_flag is none or is_state(manual_override_flag, 'off') }}
+            value_template: "{{ not override_active }}"
         sequence:
-          - service: switch.turn_off
+          - action: switch.turn_off
             target:
               entity_id: "{{ fan_switch }}"
 
-mode: restart
+      # ⏲ Override expired — turn the fan off only if humidity has recovered
+      - conditions:
+          - condition: trigger
+            id: override_expired
+          - condition: template
+            value_template: >
+              {{ states(bathroom_humidity) | float < humidity_on_threshold | float }}
+        sequence:
+          - action: switch.turn_off
+            target:
+              entity_id: "{{ fan_switch }}"
+
+# No long-running step remains in the action, so runs finish quickly. Queued
+# rather than restart, so a humidity trigger can never abort another branch
+# mid-flight — the bug that let humidity swings silently cancel an override
+# in v1.x.
+mode: queued
+max: 10

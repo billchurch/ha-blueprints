@@ -1,6 +1,6 @@
 # 🎛️ Lutron Pico Fan & Light Control
 
-**Version:** 1.0  
+**Version:** 1.1  
 **Domain:** Automation  
 **Author:** billchurch  
 
@@ -65,7 +65,7 @@ Click the button above to import this blueprint directly into your Home Assistan
 2. **Create Automation**
    - Go to Settings → Automations & Scenes
    - Click "Create Automation" → "Use Blueprint"
-   - Select "Pico Fan Simple 5-Button with Long Press v1.0"
+   - Select "Pico Fan Simple 5-Button with Long Press v1.1"
 
 3. **Configure Inputs**
    - Select your Pico remote from the device list

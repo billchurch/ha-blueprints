@@ -1,9 +1,9 @@
 blueprint:
-  name: Moisture Sensor Notifications v1.2
+  name: Moisture Sensor Notifications v1.3
   description: >
     # 💧 Moisture Sensor Notifications
     
-    **Version: 1.2**
+    **Version: 1.3**
     
     Send critical alerts when moisture sensors detect water leaks.
     
@@ -147,11 +147,11 @@ blueprint:
         text:
           multiline: true
 
-trigger:
-  - platform: state
+triggers:
+  - trigger: state
     entity_id: !input moisture_sensors
     
-condition:
+conditions:
   - condition: template
     value_template: >
       {% set new_state = trigger.to_state.state %}
@@ -186,10 +186,15 @@ variables:
   tts_targets: !input tts_targets
   tts_message: !input tts_message
 
-action:
+actions:
   - variables:
+      # Derived once here so the entity-id mangling and dashboard path are not
+      # repeated across the notification payload.
+      entity_slug: "{{ trigger.entity_id | replace('.', '_') }}"
+      action_id: "{{ trigger.entity_id | replace('.', '_') | upper }}"
+      click_url: "/lovelace/{{ area_name(trigger.entity_id) | lower | replace(' ', '-') | default('home', true) }}"
       notification_data:
-        tag: "moisture_{{ trigger.entity_id | replace('.', '_') }}"
+        tag: "moisture_{{ entity_slug }}"
         group: "moisture_alerts"
         importance: high
         channel: moisture_alerts
@@ -197,23 +202,18 @@ action:
         priority: high
         persistent: true
         sticky: true
-        clickAction: "/lovelace/{{ area_name(trigger.entity_id) | lower | replace(' ', '-') | default('home', true) }}"
+        clickAction: "{{ click_url }}"
         push:
           interruption-level: "{{ interruption_level }}"
+        # Rendered as a native list, not a JSON string, so the mobile app
+        # receives a real array.
         actions: >
-          {% if enable_actions %}
-            [{
-              "action": "ACK_{{ trigger.entity_id | replace('.', '_') | upper }}",
-              "title": "Acknowledge"
-            },
-            {
-              "action": "VIEW_{{ trigger.entity_id | replace('.', '_') | upper }}",
-              "title": "View Sensor",
-              "uri": "/lovelace/{{ area_name(trigger.entity_id) | lower | replace(' ', '-') | default('home', true) }}"
-            }]
-          {% else %}
-            []
-          {% endif %}
+          {{ [{"action": "ACK_" ~ action_id,
+               "title": "Acknowledge"},
+              {"action": "VIEW_" ~ action_id,
+               "title": "View Sensor",
+               "uri": click_url}]
+             if enable_actions else [] }}
   - choose:
       - conditions:
           - condition: template
@@ -228,7 +228,7 @@ action:
                 - repeat:
                     for_each: "{{ notify_devices }}"
                     sequence:
-                      - service: notify.mobile_app_{{ device_attr(repeat.item, 'name') | replace(' ', '_') | replace('-', '_') | lower }}
+                      - action: notify.mobile_app_{{ device_attr(repeat.item, 'name') | slugify }}
                         data:
                           title: "{{ notification_title }}"
                           message: "{{ notification_message }}"
@@ -238,11 +238,11 @@ action:
                         - condition: template
                           value_template: "{{ enable_ui_notification }}"
                       sequence:
-                        - service: persistent_notification.create
+                        - action: persistent_notification.create
                           data:
                             title: "{{ notification_title }}"
                             message: "{{ notification_message }}"
-                            notification_id: "moisture_{{ trigger.entity_id | replace('.', '_') }}"
+                            notification_id: "moisture_{{ entity_slug }}"
                 - choose:
                     - conditions:
                         - condition: template
@@ -260,7 +260,7 @@ action:
       - repeat:
           for_each: "{{ notify_devices }}"
           sequence:
-            - service: notify.mobile_app_{{ device_attr(repeat.item, 'name') | replace(' ', '_') | replace('-', '_') | lower }}
+            - action: notify.mobile_app_{{ device_attr(repeat.item, 'name') | slugify }}
               data:
                 title: "{{ notification_title }}"
                 message: "{{ notification_message }}"
@@ -270,11 +270,11 @@ action:
               - condition: template
                 value_template: "{{ enable_ui_notification }}"
             sequence:
-              - service: persistent_notification.create
+              - action: persistent_notification.create
                 data:
                   title: "{{ notification_title }}"
                   message: "{{ notification_message }}"
-                  notification_id: "moisture_{{ trigger.entity_id | replace('.', '_') }}"
+                  notification_id: "moisture_{{ entity_slug }}"
       - choose:
           - conditions:
               - condition: template
