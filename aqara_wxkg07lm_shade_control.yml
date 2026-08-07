@@ -1,0 +1,208 @@
+blueprint:
+  name: Aqara Double Rocker Shade Control v1.0
+  description: >
+    # 🪟 Aqara Double Rocker Shade Control
+
+    **Version: 1.0**
+
+    Control shades, blinds, or any cover entity with one rocker of an Aqara
+    WXKG07LM (D1 double rocker wireless remote switch) via Zigbee2MQTT.
+
+    <details>
+    <summary><b>Features:</b> - Click here to expand</summary>
+
+
+      - Choose which rocker drives the cover (left, right, or both together)
+      - Leaves the other rocker free for a separate automation
+      - Supports any Home Assistant cover entity
+      - Configurable position for the hold action
+
+    </details>
+
+    <details>
+    <summary><b>Button Actions:</b> - Click here to expand</summary>
+
+
+      **On the selected rocker:**
+      - Single Press: Open cover
+      - Double Press: Close cover
+      - Hold: Set to custom position (configurable)
+
+      The WXKG07LM does not emit a release event, so there is no stop action.
+
+    </details>
+
+    <details>
+    <summary><b>Setup Help:</b> - Click here to expand</summary>
+
+
+      **Prerequisites:**
+      1. Aqara WXKG07LM paired with Zigbee2MQTT
+      2. Working MQTT integration in Home Assistant
+      3. Cover entity available in Home Assistant
+
+      **Important:** Zigbee2MQTT only discovers an MQTT device trigger *after*
+      that action has fired at least once. Before creating the automation,
+      press your chosen rocker once, double-press it once, and hold it once —
+      otherwise those triggers will not exist yet and the automation will fail
+      to save.
+
+    </details>
+  domain: automation
+  author: billchurch
+  source_url: https://github.com/billchurch/ha-blueprints
+  input:
+    button_device:
+      name: Aqara Double Rocker Button
+      description: Select your Aqara WXKG07LM remote
+      selector:
+        device:
+          filter:
+            - integration: mqtt
+              manufacturer: Aqara
+              model: WXKG07LM
+            - integration: mqtt
+              manufacturer: Xiaomi
+              model: WXKG07LM
+            - integration: mqtt
+              manufacturer: LUMI
+              model: WXKG07LM
+          multiple: false
+    rocker:
+      name: Rocker
+      description: >
+        Which rocker controls the cover. "Both" means pressing the two rockers
+        at the same time, leaving each individual rocker free for other uses.
+      default: left
+      selector:
+        select:
+          options:
+            - label: Left
+              value: left
+            - label: Right
+              value: right
+            - label: Both (pressed together)
+              value: both
+          mode: dropdown
+    cover_entity:
+      name: Cover
+      description: The shade, blind, or cover to control
+      selector:
+        entity:
+          domain: cover
+          multiple: false
+    long_press_position:
+      name: Hold Position
+      description: Position to set when holding the rocker (0=closed, 100=fully open)
+      default: 100
+      selector:
+        number:
+          min: 0
+          max: 100
+          unit_of_measurement: "%"
+
+triggers:
+  # Single press
+  - trigger: device
+    device_id: !input button_device
+    domain: mqtt
+    type: action
+    subtype: single_left
+    id: single_left
+
+  - trigger: device
+    device_id: !input button_device
+    domain: mqtt
+    type: action
+    subtype: single_right
+    id: single_right
+
+  - trigger: device
+    device_id: !input button_device
+    domain: mqtt
+    type: action
+    subtype: single_both
+    id: single_both
+
+  # Double press
+  - trigger: device
+    device_id: !input button_device
+    domain: mqtt
+    type: action
+    subtype: double_left
+    id: double_left
+
+  - trigger: device
+    device_id: !input button_device
+    domain: mqtt
+    type: action
+    subtype: double_right
+    id: double_right
+
+  - trigger: device
+    device_id: !input button_device
+    domain: mqtt
+    type: action
+    subtype: double_both
+    id: double_both
+
+  # Hold
+  - trigger: device
+    device_id: !input button_device
+    domain: mqtt
+    type: action
+    subtype: hold_left
+    id: hold_left
+
+  - trigger: device
+    device_id: !input button_device
+    domain: mqtt
+    type: action
+    subtype: hold_right
+    id: hold_right
+
+  - trigger: device
+    device_id: !input button_device
+    domain: mqtt
+    type: action
+    subtype: hold_both
+    id: hold_both
+
+variables:
+  rocker: !input rocker
+  position: !input long_press_position
+
+actions:
+  # All nine triggers start the automation; only the three belonging to the
+  # selected rocker match a branch below. The rest end here without action.
+  - choose:
+      # Single press - Open cover
+      - conditions:
+          - condition: template
+            value_template: "{{ trigger.id == 'single_' ~ rocker }}"
+        sequence:
+          - action: cover.open_cover
+            target:
+              entity_id: !input cover_entity
+
+      # Double press - Close cover
+      - conditions:
+          - condition: template
+            value_template: "{{ trigger.id == 'double_' ~ rocker }}"
+        sequence:
+          - action: cover.close_cover
+            target:
+              entity_id: !input cover_entity
+
+      # Hold - Set to configured position
+      - conditions:
+          - condition: template
+            value_template: "{{ trigger.id == 'hold_' ~ rocker }}"
+        sequence:
+          - action: cover.set_cover_position
+            data:
+              position: "{{ position }}"
+            target:
+              entity_id: !input cover_entity
+
+mode: single
