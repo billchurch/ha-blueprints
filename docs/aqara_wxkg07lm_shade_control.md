@@ -1,11 +1,12 @@
-# 🪟 Aqara Double Rocker Shade Control
+# 🪟 Aqara Double Rocker Shade + Light Control
 
-**Version:** 1.1  
+**Version:** 1.2  
 **Domain:** Automation  
 **Author:** billchurch  
 
 Control shades, blinds, curtains, or any cover entity using one rocker of an
-Aqara WXKG07LM (D1 double rocker wireless remote switch) via Zigbee2MQTT.
+Aqara WXKG07LM (D1 double rocker wireless remote switch) via Zigbee2MQTT, and
+optionally toggle lights with the other rocker.
 
 ## 📥 Installation
 
@@ -15,14 +16,17 @@ Click the button above to import this blueprint directly into your Home Assistan
 
 ## ✨ Features
 
-- **One Rocker, One Cover**: Uses a single rocker so the other stays free for another automation
+- **One Rocker, One Cover**: Uses a single rocker so the other stays free
+- **Optional Light Rocker**: Assign the other rocker to toggle up to three lights
 - **Rocker Selection**: Left, right, or both-pressed-together, chosen at setup
+- **Lights or Switches**: Both accepted, so lamps on smart plugs work as-is
 - **Universal Compatibility**: Works with any Home Assistant cover entity
 - **Configurable Hold Position**: Pick the position the hold action applies
+- **Safe to Upgrade**: Light control is off by default; existing setups unchanged
 
 ## 🎮 Button Actions
 
-All actions apply to the rocker you select during setup.
+### Cover Rocker
 
 | Action | Z2M Event | Function |
 | --- | --- | --- |
@@ -30,9 +34,35 @@ All actions apply to the rocker you select during setup.
 | **Double Press** | `double_<rocker>` | Closes the shade/blind |
 | **Hold** | `hold_<rocker>` | Sets to configured position (default 100%) |
 
+### Light Rocker (optional)
+
+Disabled by default. Set **Light Rocker** to enable it.
+
+| Action | Z2M Event | Function |
+| --- | --- | --- |
+| **Single Press** | `single_<rocker>` | Toggles the single-press light |
+| **Double Press** | `double_<rocker>` | Toggles the double-press light |
+| **Hold** | `hold_<rocker>` | Toggles the hold light |
+
+Each light is independent — configure only the gestures you want.
+
 The WXKG07LM emits no release event, so this blueprint has no stop action —
 unlike the IKEA Shortcut blueprint, whose stop came from the E1812's
 `brightness_stop` release.
+
+### Double-Press Timing
+
+A double press only registers as `double_*` if both presses fall inside
+Zigbee2MQTT's window. A slower double is reported as two separate `single_*`
+events, which toggles the **single-press** light twice — on, then off — rather
+than firing the double-press light. Assign the light you use most to single
+press, and reserve double press for something you toggle rarely.
+
+### Using One Rocker for Both
+
+Setting **Light Rocker** to the same rocker as **Rocker** is allowed and
+intentional. The cover action and the light action then both run on the same
+press, which is a way to build a "shade plus lamp" scene on one button.
 
 ## 📋 Prerequisites
 
@@ -76,6 +106,17 @@ trigger list.
 | --- | --- | --- |
 | **Rocker** | Which rocker controls the cover: Left, Right, or Both | Left |
 | **Hold Position** | Position to set when holding (0-100%) | 100% |
+| **Light Rocker** | Which rocker toggles lights, or None to disable | None |
+| **Light — Single Press** | Light or switch toggled by a single press | none |
+| **Light — Double Press** | Light or switch toggled by a double press | none |
+| **Light — Hold** | Light or switch toggled by holding | none |
+
+The three light inputs accept both `light.*` and `switch.*` entities, so lamps
+on smart plugs work without a template helper. They are dispatched with
+`homeassistant.toggle`, which routes to the correct domain.
+
+Upgrading from an earlier version changes nothing: every light input defaults
+to empty and **Light Rocker** defaults to None.
 
 ## 🛠️ Setup Instructions
 

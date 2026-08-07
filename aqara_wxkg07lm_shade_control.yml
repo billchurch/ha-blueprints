@@ -1,19 +1,22 @@
 blueprint:
-  name: Aqara Double Rocker Shade Control v1.1
+  name: Aqara Double Rocker Shade + Light Control v1.2
   description: >
-    # 🪟 Aqara Double Rocker Shade Control
+    # 🪟 Aqara Double Rocker Shade + Light Control
 
-    **Version: 1.1**
+    **Version: 1.2**
 
     Control shades, blinds, or any cover entity with one rocker of an Aqara
-    WXKG07LM (D1 double rocker wireless remote switch) via Zigbee2MQTT.
+    WXKG07LM (D1 double rocker wireless remote switch) via Zigbee2MQTT, and
+    optionally toggle lights with the other rocker.
 
     <details>
     <summary><b>Features:</b> - Click here to expand</summary>
 
 
       - Choose which rocker drives the cover (left, right, or both together)
-      - Leaves the other rocker free for a separate automation
+      - Optionally assign the other rocker to toggle up to three lights
+      - Light control is off by default, so upgrading changes nothing
+      - Lights and switches both accepted, for lamps on smart plugs
       - Supports any Home Assistant cover entity
       - Configurable position for the hold action
 
@@ -23,12 +26,24 @@ blueprint:
     <summary><b>Button Actions:</b> - Click here to expand</summary>
 
 
-      **On the selected rocker:**
+      **On the cover rocker:**
       - Single Press: Open cover
       - Double Press: Close cover
       - Hold: Set to custom position (configurable)
 
+      **On the light rocker (optional):**
+      - Single Press: Toggle the single-press light
+      - Double Press: Toggle the double-press light
+      - Hold: Toggle the hold light
+
       The WXKG07LM does not emit a release event, so there is no stop action.
+
+      Note that a mistimed double press is reported by Zigbee2MQTT as two
+      separate single presses. On the light rocker that toggles the
+      single-press light twice rather than firing the double-press light.
+
+      Setting both rockers to the same value is allowed — a press then runs
+      the cover action and the light action together.
 
     </details>
 
@@ -112,6 +127,62 @@ blueprint:
           min: 0
           max: 100
           unit_of_measurement: "%"
+    light_rocker:
+      name: Light Rocker
+      description: >
+        Which rocker toggles lights. Leave as "None" for cover-only control.
+        Selecting the same rocker as the cover is allowed — a press then does
+        both.
+      default: none
+      selector:
+        select:
+          options:
+            - label: None (light control disabled)
+              value: none
+            - label: Left
+              value: left
+            - label: Right
+              value: right
+            - label: Both (pressed together)
+              value: both
+          mode: dropdown
+    light_single:
+      name: Light — Single Press
+      description: >
+        Toggled by a single press of the light rocker. Accepts lights and
+        switches; leave empty to do nothing.
+      default: []
+      selector:
+        entity:
+          filter:
+            - domain: light
+            - domain: switch
+          multiple: false
+    light_double:
+      name: Light — Double Press
+      description: >
+        Toggled by a double press of the light rocker. Note that a mistimed
+        double press is reported as two single presses, which toggles the
+        single-press light instead.
+      default: []
+      selector:
+        entity:
+          filter:
+            - domain: light
+            - domain: switch
+          multiple: false
+    light_hold:
+      name: Light — Hold
+      description: >
+        Toggled by holding the light rocker. Accepts lights and switches;
+        leave empty to do nothing.
+      default: []
+      selector:
+        entity:
+          filter:
+            - domain: light
+            - domain: switch
+          multiple: false
 
 triggers:
   # Single press
@@ -183,10 +254,19 @@ triggers:
 variables:
   rocker: !input rocker
   position: !input long_press_position
+  light_rocker: !input light_rocker
+  light_single: !input light_single
+  light_double: !input light_double
+  light_hold: !input light_hold
 
 actions:
-  # All nine triggers start the automation; only the three belonging to the
-  # selected rocker match a branch below. The rest end here without action.
+  # All nine triggers start the automation. The two choose blocks below are
+  # evaluated independently, so if the cover rocker and the light rocker are
+  # set to the same value a single press runs both. That is intentional —
+  # merging them into one choose would silently drop the light branch, since
+  # choose only ever executes its first matching option.
+
+  # Block 1 - cover
   - choose:
       # Single press - Open cover
       - conditions:
@@ -217,4 +297,46 @@ actions:
             target:
               entity_id: !input cover_entity
 
-mode: single
+  # Block 2 - lights
+  # When light_rocker is "none" the concatenations below produce ids such as
+  # "single_none", which this device never emits, so nothing matches and light
+  # control is off. The count guard covers a configured rocker whose light
+  # entity was left empty.
+  - choose:
+      # Single press - Toggle the single-press light
+      - conditions:
+          - condition: template
+            value_template: >-
+              {{ trigger.id == 'single_' ~ light_rocker
+                 and light_single | count > 0 }}
+        sequence:
+          - action: homeassistant.toggle
+            target:
+              entity_id: !input light_single
+
+      # Double press - Toggle the double-press light
+      - conditions:
+          - condition: template
+            value_template: >-
+              {{ trigger.id == 'double_' ~ light_rocker
+                 and light_double | count > 0 }}
+        sequence:
+          - action: homeassistant.toggle
+            target:
+              entity_id: !input light_double
+
+      # Hold - Toggle the hold light
+      - conditions:
+          - condition: template
+            value_template: >-
+              {{ trigger.id == 'hold_' ~ light_rocker
+                 and light_hold | count > 0 }}
+        sequence:
+          - action: homeassistant.toggle
+            target:
+              entity_id: !input light_hold
+
+# queued, not single: under single a press landing while the previous run is
+# still active is dropped with a warning.
+mode: queued
+max: 10
