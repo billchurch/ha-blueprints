@@ -1,6 +1,6 @@
 # 💨 Bath Fan Automation
 
-**Version:** 1.0  
+**Version:** 2.0  
 **Domain:** Automation  
 **Author:** billchurch  
 
@@ -14,63 +14,98 @@ Smart bathroom exhaust fan control based on humidity levels with manual override
 
 Click the button above to import this blueprint directly into your Home Assistant instance.
 
+## ⚠️ Upgrading from v1.x
+
+**v2.0 is a breaking change.** The manual override is now tracked by a **Timer**
+helper instead of an input boolean plus an in-automation `delay`.
+
+Three bugs drove the rewrite:
+
+- The automation could not tell a manual press apart from *its own* turn-on.
+  When humidity turned the fan on, that counted as a manual override, blocking
+  the automatic turn-off for the full override period.
+- `mode: restart` meant any humidity reading aborted an in-flight override.
+- The override lived in a `delay`, so a Home Assistant restart dropped it and
+  left the fan running with nothing scheduled to turn it off.
+
+To migrate:
+
+1. Create a Timer helper (Settings → Devices & Services → Helpers → Create
+   Helper → Timer). Any name works; leave its duration at `0:00:00`, since the
+   blueprint sets the duration when it starts the timer.
+2. Re-import the blueprint and edit your automation.
+3. Select the new timer in the **Manual Override Timer** field.
+4. Leave **Manual Override Flag** alone. It is now ignored, and is kept only so
+   automations created with v1.x still load after re-import. Once every
+   automation using this blueprint is migrated, you can delete the input
+   boolean helper it pointed at.
+
 ## ✨ Features
 
 - **Automatic Humidity Control**: Fan activates when humidity exceeds threshold
-- **Manual Override**: Direct control with configurable timer
+- **Manual Override**: Timer-backed, and survives Home Assistant restarts
+- **True Manual Detection**: Uses the event context to distinguish a real
+  button press or UI tap from the automation's own turn-on
 - **Smart Comparison**: Monitors bathroom vs house humidity differential
 - **Conflict Prevention**: Manual and automatic modes work seamlessly
-- **Helper Integration**: Optional dashboard controls via input helpers
 - **Flexible Configuration**: Customizable thresholds and timers
 
 ## 🔄 How It Works
 
 1. **Humidity Monitoring**: Continuously compares bathroom and house humidity
 2. **Smart Activation**: Fan turns on when humidity exceeds threshold + delta
-3. **Manual Override**: Direct control temporarily disables automation
-4. **Auto Resume**: Returns to automatic mode after override period
+3. **Manual Override**: Turning the fan on by hand starts the override timer,
+   which suspends humidity control while it runs
+4. **Early Cancel**: Turning the fan off by hand cancels the override
+   immediately, so humidity control resumes right away
+5. **Auto Resume**: When the timer finishes, the fan turns off if humidity has
+   recovered; otherwise humidity control simply takes over again
+
+The override state is `timer.your_timer == 'active'` — one source of truth you
+can inspect in Developer Tools → States at any time.
 
 ## 📋 Prerequisites
 
 1. **Fan Switch**: A controllable switch entity for your exhaust fan
-2. **Humidity Sensors**: 
+2. **Humidity Sensors**:
    - Bathroom humidity sensor
    - House/reference humidity sensor
-3. **Helpers** (optional but recommended):
-   - Input Boolean for override tracking
-   - Input Number for timer duration
+3. **Timer Helper** (required): tracks the manual override
+4. **Input Number** (optional): user-adjustable override duration
 
 ## ⚙️ Configuration
 
 ### Required Inputs
 
 | Input | Description |
-|-------|-------------|
+| --- | --- |
 | **Fan Switch** | The switch entity controlling your exhaust fan |
 | **Bathroom Humidity** | Humidity sensor in the bathroom |
 | **Indoor Humidity** | Reference humidity sensor (main house) |
+| **Manual Override Timer** | Timer helper tracking the manual override |
 
 ### Optional Inputs
 
 | Input | Description | Default |
-|-------|-------------|---------|
-| **Manual Override Flag** | Input boolean to track override state | None |
-| **Override Duration Helper** | Input number for adjustable timer | None |
+| --- | --- | --- |
 | **Humidity On Threshold** | Trigger level for fan activation | 65% |
 | **Humidity Off Threshold** | Level to turn fan off | 62% |
 | **Humidity Delta** | Difference vs house humidity | 5% |
 | **Manual Override Duration** | Default override time | 20 min |
+| **Override Duration Helper** | Input number for adjustable timer; overrides the above | None |
+| **Manual Override Flag** | Deprecated and ignored — see the upgrade notes | None |
 
 ## 🛠️ Setup Instructions
 
-### Step 1: Create Helpers (Optional)
+### Step 1: Create Helpers
 
-1. **Override Flag Helper**
+1. **Override Timer** (required)
    - Go to Settings → Devices & Services → Helpers
-   - Click "Create Helper" → Toggle
+   - Click "Create Helper" → Timer
    - Name: "Bath Fan Manual Override"
+   - Duration: leave at `0:00:00` — the blueprint sets it at runtime
 
-2. **Duration Helper**
+2. **Duration Helper** (optional)
    - Click "Create Helper" → Number
    - Name: "Bath Fan Override Duration"
    - Min: 5, Max: 60, Step: 1
@@ -100,7 +135,7 @@ use_blueprint:
     fan_switch: switch.master_bath_exhaust_fan
     bathroom_humidity: sensor.master_bath_humidity
     indoor_humidity: sensor.hallway_humidity
-    manual_override_flag: input_boolean.master_bath_fan_override
+    override_timer: timer.master_bath_fan_override
     override_duration_helper: input_number.master_bath_override_duration
     humidity_on_threshold: 68
     humidity_off_threshold: 64
@@ -118,8 +153,8 @@ entities:
   - entity: sensor.bathroom_humidity
     name: Current Humidity
   - type: divider
-  - entity: input_boolean.bath_fan_manual_override
-    name: Manual Override Active
+  - entity: timer.bath_fan_manual_override
+    name: Manual Override
   - entity: input_number.bath_fan_override_duration
     name: Override Duration (min)
 ```
@@ -131,14 +166,15 @@ entities:
 - Shower ends → Humidity drops → Fan turns off when threshold met
 
 ### Manual Control
-- Turn on fan directly → Runs for set duration
-- Automation pauses during manual period
-- Resumes automatic control after timer expires
+- Turn on fan directly → Override timer starts, fan runs for the set duration
+- Humidity control is suspended while the timer is active
+- Turn the fan off by hand → Override is cancelled, humidity control resumes
+- Timer finishes → Fan turns off if humidity has recovered
 
 ### Multiple Bathrooms
-Create unique helpers for each bathroom:
-- `input_boolean.master_bath_fan_override`
-- `input_boolean.guest_bath_fan_override`
+Create a separate timer for each bathroom:
+- `timer.master_bath_fan_override`
+- `timer.guest_bath_fan_override`
 
 ## ❓ Troubleshooting
 
@@ -149,9 +185,13 @@ Create unique helpers for each bathroom:
 - Review automation traces for trigger details
 
 ### Manual Override Issues
-- Confirm helper entities are properly linked
-- Check helper entity states in Developer Tools
-- Verify override timer configuration
+- Check the timer entity in Developer Tools → States. `active` means an
+  override is in effect; `idle` means humidity control is running
+- If the override never starts, confirm the fan is being switched by hand or
+  from the UI. Changes made by *another* automation are deliberately not
+  treated as manual and will not start an override
+- If the override never ends, check that the timer's `remaining` is counting
+  down and that `timer.finished` appears in Developer Tools → Events
 
 ### Frequent Cycling
 - Increase gap between on/off thresholds

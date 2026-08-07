@@ -1,6 +1,6 @@
 # 🪟 IKEA Shortcut Button Shade Control
 
-**Version:** 1.0  
+**Version:** 1.1  
 **Domain:** Automation  
 **Author:** billchurch  
 
@@ -68,7 +68,7 @@ Click the button above to import this blueprint directly into your Home Assistan
 3. **Create Automation**
    - Go to Settings → Automations & Scenes
    - Click "Create Automation" → "Use Blueprint"
-   - Select "IKEA Shortcut Button Shade Control v1.0"
+   - Select "IKEA Shortcut Button Shade Control v1.1"
 
 4. **Configure**
    - Select your IKEA button from the device list

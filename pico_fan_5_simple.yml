@@ -1,9 +1,9 @@
 blueprint:
-  name: Pico Fan Simple 5-Button with Long Press v1.0
+  name: Pico Fan Simple 5-Button with Long Press v1.1
   description: >
     # 🎛️ Lutron Pico Fan & Light Control
     
-    **Version: 1.0**
+    **Version: 1.1**
     
     Control ceiling fans and optional lights with a Lutron Pico 5-button remote.
     
@@ -105,36 +105,36 @@ blueprint:
           max: 1000
           unit_of_measurement: "ms"
 
-trigger:
-  - platform: device
+triggers:
+  - trigger: device
     device_id: !input pico_remote
     domain: lutron_caseta
     type: press
     subtype: 'on'
     id: 'on'
 
-  - platform: device
+  - trigger: device
     device_id: !input pico_remote
     domain: lutron_caseta
     type: press
     subtype: raise
     id: 'up'
 
-  - platform: device
+  - trigger: device
     device_id: !input pico_remote
     domain: lutron_caseta
     type: press
     subtype: stop
     id: 'middle'
 
-  - platform: device
+  - trigger: device
     device_id: !input pico_remote
     domain: lutron_caseta
     type: press
     subtype: lower
     id: 'down'
 
-  - platform: device
+  - trigger: device
     device_id: !input pico_remote
     domain: lutron_caseta
     type: press
@@ -147,7 +147,7 @@ variables:
   step_pct: !input brightness_step
   rate_ms: !input dimming_rate
 
-action:
+actions:
   - choose:
     ################################################
     # ON BUTTON ────────────────
@@ -156,7 +156,7 @@ action:
         - condition: trigger
           id: 'on'
       sequence:
-        - service: fan.turn_on
+        - action: fan.turn_on
           target:
             entity_id: !input fan_entity
 
@@ -168,7 +168,7 @@ action:
         # If a light is defined we need to know whether this
         # was a *tap* or a *hold*.  Wait briefly for a release.
         - wait_for_trigger:
-            - platform: device
+            - trigger: device
               device_id: !input pico_remote
               domain: lutron_caseta
               type: release
@@ -179,14 +179,14 @@ action:
         # SHORT PRESS → bump fan speed
         - if: "{{ wait.trigger is not none or light|length == 0 }}"
           then:
-            - service: fan.increase_speed
+            - action: fan.increase_speed
               target: { entity_id: "{{ fan }}" }
 
         # LONG PRESS → brighten light continuously
           else:
             - repeat:
                 sequence:
-                  - service: light.turn_on
+                  - action: light.turn_on
                     target: { entity_id: "{{ light }}" }
                     data:
                       brightness_step_pct: "{{ step_pct }}"
@@ -211,10 +211,10 @@ action:
         - choose:
             - conditions: "{{ light | length > 0 }}"
               sequence:
-                - service: light.toggle
+                - action: light.toggle
                   target: { entity_id: "{{ light }}" }
           default:
-            - service: fan.toggle
+            - action: fan.toggle
               target: { entity_id: !input fan_entity }
 
     ################################################
@@ -223,7 +223,7 @@ action:
     - conditions: "{{ trigger.id == 'down' }}"
       sequence:
         - wait_for_trigger:
-            - platform: device
+            - trigger: device
               device_id: !input pico_remote
               domain: lutron_caseta
               type: release
@@ -234,14 +234,14 @@ action:
         # SHORT PRESS → slower fan
         - if: "{{ wait.trigger is not none or light|length == 0 }}"
           then:
-            - service: fan.decrease_speed
+            - action: fan.decrease_speed
               target: { entity_id: "{{ fan }}" }
 
         # LONG PRESS → dim light continuously
           else:
             - repeat:
                 sequence:
-                  - service: light.turn_on
+                  - action: light.turn_on
                     target: { entity_id: "{{ light }}" }
                     data:
                       brightness_step_pct: "{{ 0 - step_pct }}"
@@ -261,8 +261,12 @@ action:
         - condition: trigger
           id: 'off'
       sequence:
-        - service: fan.turn_off
+        - action: fan.turn_off
           target:
             entity_id: !input fan_entity
 
-mode: restart   # ensures a release event aborts the running loop
+# A new button press restarts the automation, which is what stops an
+# in-progress dim loop. The `release` device event is not a trigger here, so
+# letting go of the button does not by itself end the loop — the loop otherwise
+# runs until the light reaches minimum or maximum brightness.
+mode: restart
