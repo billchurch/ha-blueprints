@@ -1,6 +1,6 @@
 # 💨 Bath Fan Automation
 
-**Version:** 2.0  
+**Version:** 2.1  
 **Domain:** Automation  
 **Author:** billchurch  
 

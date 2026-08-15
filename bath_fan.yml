@@ -1,9 +1,9 @@
 blueprint:
-  name: Humidity-Controlled Fan with Manual Override v2.0
+  name: Humidity-Controlled Fan with Manual Override v2.1
   description: >
     # 💨 Bath Fan Automation
 
-    **Version: 2.0**
+    **Version: 2.1**
 
     Smart bathroom fan control based on humidity with manual override support.
 
@@ -282,12 +282,15 @@ actions:
               entity_id: "{{ fan_switch }}"
 
       # ⏲ Override expired — turn the fan off only if humidity has recovered
+      # to the off-threshold, matching the hysteresis used everywhere else
+      # (comparing against the on-threshold let the fan quit while still
+      # well above the level automatic control considers "clear").
       - conditions:
           - condition: trigger
             id: override_expired
           - condition: template
             value_template: >
-              {{ states(bathroom_humidity) | float < humidity_on_threshold | float }}
+              {{ states(bathroom_humidity) | float < humidity_off_threshold | float }}
         sequence:
           - action: switch.turn_off
             target:
