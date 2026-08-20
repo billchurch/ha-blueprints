@@ -1,9 +1,9 @@
 blueprint:
-  name: Humidity-Controlled Fan with Manual Override v2.1
+  name: Humidity-Controlled Fan with Manual Override v2.2
   description: >
     # 💨 Bath Fan Automation
 
-    **Version: 2.1**
+    **Version: 2.2**
 
     Smart bathroom fan control based on humidity with manual override support.
 
@@ -17,6 +17,8 @@ blueprint:
       - Compares bathroom vs house humidity
       - Smart delta threshold detection
       - Turning the fan off by hand cancels the override immediately
+      - Optional run-on timer keeps the fan running for a few extra minutes
+        after humidity clears
 
     </details>
 
@@ -55,13 +57,23 @@ blueprint:
          - Name: "Bath Fan Manual Override" (or similar)
          - Duration: leave at 0:00:00 — this blueprint sets it at runtime
 
-      **Optional Helper:**
+      **Optional Helpers:**
 
       2. Create an Input Number for override duration:
          - Click "Create Helper" → Number
          - Name: "Bath Fan Override Duration"
          - Min: 5, Max: 60, Step: 1
          - Unit: minutes
+
+      3. Create a Timer for run-on tracking, if you want the fan to keep
+         running for a few minutes after humidity clears:
+         - Go to Settings → Devices & Services → Helpers
+         - Click "Create Helper" → Timer
+         - Name: "Bath Fan Run-On" (or similar)
+         - Duration: leave at 0:00:00 — this blueprint sets it at runtime
+         - Select it as the **Fan Run-On Timer** input below. Leave that input
+           empty to keep the fan turning off immediately when humidity clears,
+           as in previous versions.
 
       **Dashboard Card Example:**
 
@@ -75,6 +87,8 @@ blueprint:
           name: Manual Override
         - entity: input_number.bath_fan_override_duration
           name: Override Duration (minutes)
+        - entity: timer.bath_fan_run_on
+          name: Run-On Timer
       ```
 
     </details>
@@ -175,6 +189,32 @@ blueprint:
         entity:
           filter:
             domain: input_boolean
+    run_on_timer:
+      name: Fan Run-On Timer (Optional)
+      description: >
+        Optional timer helper. When set, the fan keeps running for the Run-On
+        Duration below after humidity drops back to the off threshold, instead
+        of turning off immediately. Leave empty to keep the fan turning off
+        immediately, as in previous versions. Create it the same way as the
+        Manual Override Timer; its configured duration doesn't matter, since
+        this blueprint sets it at runtime.
+      default:
+      selector:
+        entity:
+          filter:
+            domain: timer
+    run_on_duration:
+      name: Run-On Duration (minutes)
+      description: >
+        How long to keep the fan running after humidity drops below the off
+        threshold, when the Fan Run-On Timer above is configured.
+      default: 10
+      selector:
+        number:
+          min: 1
+          max: 60
+          unit_of_measurement: minutes
+          step: 1
 
 triggers:
   - trigger: numeric_state
@@ -203,6 +243,13 @@ triggers:
       entity_id: !input override_timer
     id: override_expired
 
+  # No event_data filter here: run_on_timer is optional and may be empty, and
+  # filtering a possibly-null entity_id at the trigger level is unreliable.
+  # The action's template condition below does the real filtering instead.
+  - trigger: event
+    event_type: timer.finished
+    id: run_on_expired
+
 variables:
   fan_switch: !input fan_switch
   bathroom_humidity: !input bathroom_humidity
@@ -213,6 +260,8 @@ variables:
   humidity_delta: !input humidity_delta
   manual_override_duration: !input manual_override_duration
   override_duration_helper: !input override_duration_helper
+  run_on_timer: !input run_on_timer
+  run_on_duration: !input run_on_duration
   # Single source of truth for "a manual override is in effect". Unlike the
   # v1.x in-action delay, this survives a Home Assistant restart.
   override_active: "{{ is_state(override_timer, 'active') }}"
@@ -220,6 +269,9 @@ variables:
   override_minutes: >
     {{ states(override_duration_helper) | float(manual_override_duration)
        if override_duration_helper else manual_override_duration }}
+  # Whether the run-on feature is enabled at all — the Fan Run-On Timer input
+  # is optional, and its presence is what turns the feature on.
+  run_on_configured: "{{ run_on_timer not in [none, ''] }}"
 
 actions:
   - choose:
@@ -236,6 +288,15 @@ actions:
           - action: switch.turn_on
             target:
               entity_id: "{{ fan_switch }}"
+          # Humidity rebounded during a run-on countdown — cancel it so the
+          # stale timer doesn't turn the fan back off later.
+          - if:
+              - condition: template
+                value_template: "{{ run_on_configured and is_state(run_on_timer, 'active') }}"
+            then:
+              - action: timer.cancel
+                target:
+                  entity_id: "{{ run_on_timer }}"
 
       # 🌬 Manual turn on detected — start the override timer.
       #
@@ -270,10 +331,59 @@ actions:
             target:
               entity_id: "{{ override_timer }}"
 
-      # 💡 Turn fan off if humidity dropped & no manual override
+      # 🛑🧹 Manual turn off while a run-on countdown is pending — cancel it so
+      # it doesn't try to turn off an already-off fan later. Mutually
+      # exclusive with the override-cancel branch above: run-on only ever
+      # starts while the override is inactive.
+      - conditions:
+          - condition: trigger
+            id: manual_off
+          - condition: template
+            value_template: "{{ trigger.to_state.context.parent_id is none }}"
+          - condition: template
+            value_template: "{{ run_on_configured and is_state(run_on_timer, 'active') }}"
+        sequence:
+          - action: timer.cancel
+            target:
+              entity_id: "{{ run_on_timer }}"
+
+      # 💧⏲ Humidity dropped & no override — start the run-on timer instead of
+      # turning off immediately, when a Fan Run-On Timer is configured.
       - conditions:
           - condition: trigger
             id: humidity_low
+          - condition: template
+            value_template: "{{ not override_active }}"
+          - condition: template
+            value_template: "{{ run_on_configured }}"
+        sequence:
+          - action: timer.start
+            target:
+              entity_id: "{{ run_on_timer }}"
+            data:
+              duration: "{{ (run_on_duration | float(10) * 60) | int }}"
+
+      # 💡 Turn fan off if humidity dropped & no manual override (no run-on
+      # timer configured — previous versions' behavior, unchanged)
+      - conditions:
+          - condition: trigger
+            id: humidity_low
+          - condition: template
+            value_template: "{{ not override_active }}"
+          - condition: template
+            value_template: "{{ not run_on_configured }}"
+        sequence:
+          - action: switch.turn_off
+            target:
+              entity_id: "{{ fan_switch }}"
+
+      # 💧⏲✔ Run-on countdown finished — turn the fan off, unless a manual
+      # override started in the meantime
+      - conditions:
+          - condition: trigger
+            id: run_on_expired
+          - condition: template
+            value_template: "{{ trigger.event.data.entity_id == run_on_timer }}"
           - condition: template
             value_template: "{{ not override_active }}"
         sequence:

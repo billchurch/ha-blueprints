@@ -1,6 +1,6 @@
 # 💨 Bath Fan Automation
 
-**Version:** 2.1  
+**Version:** 2.2  
 **Domain:** Automation  
 **Author:** billchurch  
 
@@ -49,6 +49,8 @@ To migrate:
 - **Smart Comparison**: Monitors bathroom vs house humidity differential
 - **Conflict Prevention**: Manual and automatic modes work seamlessly
 - **Flexible Configuration**: Customizable thresholds and timers
+- **Optional Run-On**: Keep the fan running a few extra minutes after humidity
+  clears, instead of stopping the moment the threshold is crossed
 
 ## 🔄 How It Works
 
@@ -60,9 +62,14 @@ To migrate:
    immediately, so humidity control resumes right away
 5. **Auto Resume**: When the timer finishes, the fan turns off if humidity has
    recovered; otherwise humidity control simply takes over again
+6. **Optional Run-On**: If a Fan Run-On Timer is configured, the fan keeps
+   running for the configured duration after humidity clears, instead of
+   stopping immediately. A humidity rebound or a manual turn-off during the
+   countdown cancels it.
 
 The override state is `timer.your_timer == 'active'` — one source of truth you
-can inspect in Developer Tools → States at any time.
+can inspect in Developer Tools → States at any time. The run-on timer works
+the same way.
 
 ## 📋 Prerequisites
 
@@ -94,6 +101,8 @@ can inspect in Developer Tools → States at any time.
 | **Manual Override Duration** | Default override time | 20 min |
 | **Override Duration Helper** | Input number for adjustable timer; overrides the above | None |
 | **Manual Override Flag** | Deprecated and ignored — see the upgrade notes | None |
+| **Fan Run-On Timer** | Timer helper; when set, enables the run-on behavior below | None |
+| **Run-On Duration** | Minutes to keep the fan running after humidity clears, when the timer above is set | 10 min |
 
 ## 🛠️ Setup Instructions
 
@@ -110,6 +119,14 @@ can inspect in Developer Tools → States at any time.
    - Name: "Bath Fan Override Duration"
    - Min: 5, Max: 60, Step: 1
    - Unit: minutes
+
+3. **Run-On Timer** (optional)
+   - Go to Settings → Devices & Services → Helpers
+   - Click "Create Helper" → Timer
+   - Name: "Bath Fan Run-On"
+   - Duration: leave at `0:00:00` — the blueprint sets it at runtime
+   - Select it as the **Fan Run-On Timer** input. Leave it unset to keep the
+     fan turning off immediately when humidity clears.
 
 ### Step 2: Import Blueprint
 
@@ -157,13 +174,16 @@ entities:
     name: Manual Override
   - entity: input_number.bath_fan_override_duration
     name: Override Duration (min)
+  - entity: timer.bath_fan_run_on
+    name: Run-On Timer
 ```
 
 ## 🎯 Usage Scenarios
 
 ### Automatic Operation
 - Shower starts → Humidity rises → Fan activates automatically
-- Shower ends → Humidity drops → Fan turns off when threshold met
+- Shower ends → Humidity drops → Fan turns off when threshold met (or after
+  the run-on duration, if a Fan Run-On Timer is configured)
 
 ### Manual Control
 - Turn on fan directly → Override timer starts, fan runs for the set duration
