@@ -1,9 +1,9 @@
 blueprint:
-  name: Moisture Sensor Notifications v1.3
+  name: Moisture Sensor Notifications v1.4
   description: >
     # 💧 Moisture Sensor Notifications
     
-    **Version: 1.3**
+    **Version: 1.4**
     
     Send critical alerts when moisture sensors detect water leaks.
     
@@ -226,9 +226,10 @@ actions:
                     {{ is_state(trigger.entity_id, trigger.to_state.state) }}
               sequence:
                 - repeat:
-                    for_each: "{{ notify_devices }}"
+                    for_each: "{{ notify_devices | reject('is_device_attr', 'name', none) | select('is_device_attr', 'disabled_by', none) | list }}"
                     sequence:
                       - action: notify.mobile_app_{{ device_attr(repeat.item, 'name') | slugify }}
+                        continue_on_error: true
                         data:
                           title: "{{ notification_title }}"
                           message: "{{ notification_message }}"
@@ -249,6 +250,7 @@ actions:
                           value_template: "{{ enable_tts }}"
                       sequence:
                         - action: tts.speak
+                          continue_on_error: true
                           target:
                             entity_id: !input tts_service
                           data:
@@ -258,9 +260,10 @@ actions:
                     minutes: "{{ repeat_interval }}"
     default:
       - repeat:
-          for_each: "{{ notify_devices }}"
+          for_each: "{{ notify_devices | reject('is_device_attr', 'name', none) | select('is_device_attr', 'disabled_by', none) | list }}"
           sequence:
             - action: notify.mobile_app_{{ device_attr(repeat.item, 'name') | slugify }}
+              continue_on_error: true
               data:
                 title: "{{ notification_title }}"
                 message: "{{ notification_message }}"
@@ -281,6 +284,7 @@ actions:
                 value_template: "{{ enable_tts }}"
             sequence:
               - action: tts.speak
+                continue_on_error: true
                 target:
                   entity_id: !input tts_service
                 data:

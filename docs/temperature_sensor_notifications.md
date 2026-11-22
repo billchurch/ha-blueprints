@@ -1,6 +1,6 @@
 # 🌡️ Temperature Sensor Notifications
 
-**Version:** 1.2
+**Version:** 1.3
 **Domain:** Automation
 **Author:** billchurch
 

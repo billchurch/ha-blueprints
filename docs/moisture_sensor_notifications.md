@@ -1,6 +1,6 @@
 # 💧 Moisture Sensor Notifications
 
-**Version:** 1.3  
+**Version:** 1.4  
 **Domain:** Automation  
 **Author:** billchurch  
 
