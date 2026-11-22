@@ -47,7 +47,7 @@ blueprint:
     </details>
   domain: automation
   author: billchurch
-  source_url: https://github.com/billchurch/ha-blueprints
+  source_url: https://raw.githubusercontent.com/billchurch/ha-blueprints/refs/heads/main/ikea_shortcut_shade_control.yml
   input:
     button_device:
       name: IKEA Shortcut Button
