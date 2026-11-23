@@ -22,7 +22,7 @@ blueprint:
 
   domain: automation
   author: billchurch
-  source_url: https://github.com/billchurch/ha-blueprints
+  source_url: https://raw.githubusercontent.com/billchurch/ha-blueprints/refs/heads/main/moisture_sensor_notifications.yml
   input:
     moisture_sensors:
       name: Moisture Sensors
