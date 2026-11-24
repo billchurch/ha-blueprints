@@ -1,6 +1,6 @@
 # 💨 Bath Fan Automation
 
-**Version:** 2.2  
+**Version:** 2.3  
 **Domain:** Automation  
 **Author:** billchurch  
 
@@ -51,6 +51,9 @@ To migrate:
 - **Flexible Configuration**: Customizable thresholds and timers
 - **Optional Run-On**: Keep the fan running a few extra minutes after humidity
   clears, instead of stopping the moment the threshold is crossed
+- **Stale Sensor Guard** (v2.3): When the override timer ends, the fan turns
+  off if the humidity reading is unavailable, not a number, or older than the
+  Stale Reading Limit, so a dead sensor can't leave the fan running
 
 ## 🔄 How It Works
 
@@ -103,6 +106,7 @@ the same way.
 | **Manual Override Flag** | Deprecated and ignored — see the upgrade notes | None |
 | **Fan Run-On Timer** | Timer helper; when set, enables the run-on behavior below | None |
 | **Run-On Duration** | Minutes to keep the fan running after humidity clears, when the timer above is set | 10 min |
+| **Stale Reading Limit** | A humidity reading older than this counts as stale when the override timer ends, and the fan turns off | 180 min |
 
 ## 🛠️ Setup Instructions
 
@@ -212,6 +216,9 @@ Create a separate timer for each bathroom:
   treated as manual and will not start an override
 - If the override never ends, check that the timer's `remaining` is counting
   down and that `timer.finished` appears in Developer Tools → Events
+- If the fan turns off at the end of an override while the room is still
+  humid, the sensor may be reporting less often than the Stale Reading Limit.
+  Raise the limit above its longest gap between reports
 
 ### Frequent Cycling
 - Increase gap between on/off thresholds
