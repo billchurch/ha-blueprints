@@ -1,9 +1,9 @@
 blueprint:
-  name: Humidity-Controlled Fan with Manual Override v2.2
+  name: Humidity-Controlled Fan with Manual Override v2.3
   description: >
     # 💨 Bath Fan Automation
 
-    **Version: 2.2**
+    **Version: 2.3**
 
     Smart bathroom fan control based on humidity with manual override support.
 
@@ -19,6 +19,22 @@ blueprint:
       - Turning the fan off by hand cancels the override immediately
       - Optional run-on timer keeps the fan running for a few extra minutes
         after humidity clears
+      - A dead or frozen humidity sensor can't keep the fan running: when
+        the override timer ends, the fan turns off unless a fresh reading
+        (newer than the Stale Reading Limit) says the room is still humid
+
+    </details>
+
+    <details>
+    <summary><b>Changes in v2.3:</b> - Click here to expand</summary>
+
+
+      When the manual override timer ends, the fan now also turns off if the
+      bathroom humidity reading is unavailable, unknown, not a number, or
+      has not been reported for longer than the new **Stale Reading Limit**
+      input (default 180 minutes). Before, a sensor that went silent while
+      reading above the off threshold left the fan running indefinitely.
+      Turning the fan on is unchanged. No new inputs are required.
 
     </details>
 
@@ -215,6 +231,23 @@ blueprint:
           max: 60
           unit_of_measurement: minutes
           step: 1
+    humidity_stale_minutes:
+      name: Stale Reading Limit (minutes)
+      description: >
+        When the manual override timer ends, a humidity reading older than
+        this is treated as stale, and the fan turns off as if the room were
+        dry. Pick a value above the longest gap your sensor leaves between
+        reports when the humidity holds steady (many Zigbee sensors report at
+        least hourly, and an MQTT sensor only records a report when the value
+        changes).
+      default: 180
+      selector:
+        number:
+          min: 15
+          max: 1440
+          unit_of_measurement: minutes
+          step: 5
+          mode: box
 
 triggers:
   - trigger: numeric_state
@@ -262,6 +295,7 @@ variables:
   override_duration_helper: !input override_duration_helper
   run_on_timer: !input run_on_timer
   run_on_duration: !input run_on_duration
+  humidity_stale_minutes: !input humidity_stale_minutes
   # Single source of truth for "a manual override is in effect". Unlike the
   # v1.x in-action delay, this survives a Home Assistant restart.
   override_active: "{{ is_state(override_timer, 'active') }}"
@@ -399,8 +433,15 @@ actions:
           - condition: trigger
             id: override_expired
           - condition: template
-            value_template: >
-              {{ states(bathroom_humidity) | float < humidity_off_threshold | float }}
+            # Also turn off when the reading can't be trusted: a missing,
+            # non-numeric or stale value would otherwise keep the fan on.
+            value_template: >-
+              {% set s = states[bathroom_humidity] %}
+              {{ s is none
+                 or not is_number(s.state)
+                 or (now() - s.last_reported).total_seconds()
+                    > humidity_stale_minutes | float(180) * 60
+                 or s.state | float < humidity_off_threshold | float }}
         sequence:
           - action: switch.turn_off
             target:
