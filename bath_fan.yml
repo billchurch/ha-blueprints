@@ -1,9 +1,9 @@
 blueprint:
-  name: Humidity-Controlled Fan with Manual Override v2.3
+  name: Humidity-Controlled Fan with Manual Override v2.4
   description: >
     # 💨 Bath Fan Automation
 
-    **Version: 2.3**
+    **Version: 2.4**
 
     Smart bathroom fan control based on humidity with manual override support.
 
@@ -22,6 +22,43 @@ blueprint:
       - A dead or frozen humidity sensor can't keep the fan running: when
         the override timer ends, the fan turns off unless a fresh reading
         (newer than the Stale Reading Limit) says the room is still humid
+      - The fan turns off once the bathroom is back within the Humidity Off
+        Delta of the house, so a humid house can't keep it running for hours
+      - The fan turns on once the bathroom rises more than the Humidity
+        Delta above the house, even if it never crosses the Humidity On
+        Threshold
+
+    </details>
+
+    <details>
+    <summary><b>Changes in v2.4:</b> - Click here to expand</summary>
+
+
+      The fan turned on relative to the house (bathroom more than the
+      Humidity Delta above it) but turned off only on an absolute level
+      (bathroom below the Humidity Off Threshold). On a humid day, with the
+      whole house above the off threshold, the bathroom could never get
+      there, and the fan ran until someone turned it off.
+
+      The new **Humidity Off Delta** input (default 2) adds a relative off
+      rule: the fan now turns off when the bathroom is less than that far
+      above the house, **or** below the Humidity Off Threshold, whichever
+      comes first. It applies on every off path: humidity dropping (with or
+      without the run-on timer) and the manual override ending. Set it to 0
+      to keep the v2.3 off behavior.
+
+      Turning on had the mirror-image gap. The fan turned on only at the
+      moment the bathroom crossed the Humidity On Threshold, and only if it
+      was more than the Humidity Delta above the house at that moment. A
+      bathroom that was already above the threshold (common when the house
+      is humid), or that reached the delta a little later, never turned the
+      fan on. The fan now also turns on whenever the bathroom rises more
+      than the Humidity Delta above the house, whether or not it crosses the
+      threshold. A manual override still blocks it, and a bathroom reading
+      older than the Stale Reading Limit can't start it this way.
+
+      The stale-sensor rule and every existing input are unchanged, so
+      existing automations need no edits.
 
     </details>
 
@@ -145,7 +182,11 @@ blueprint:
             domain: timer
     humidity_on_threshold:
       name: Humidity On Threshold
-      description: Humidity percentage that triggers the fan ON.
+      description: >
+        Humidity percentage that triggers the fan ON, when the bathroom is
+        also more than the Humidity Delta above the house. The fan also turns
+        on whenever the bathroom rises more than the Humidity Delta above the
+        house, without reaching this level.
       default: 65
       selector:
         number:
@@ -165,7 +206,10 @@ blueprint:
           step: 1
     humidity_delta:
       name: Humidity Delta
-      description: Difference between bathroom and house humidity to consider for triggering.
+      description: >
+        The fan turns on when the bathroom is more than this far above the
+        house humidity, whether or not it has crossed the Humidity On
+        Threshold.
       default: 5
       selector:
         number:
@@ -173,6 +217,21 @@ blueprint:
           max: 20
           unit_of_measurement: "%"
           step: 1
+    humidity_off_delta:
+      name: Humidity Off Delta
+      description: >
+        The fan also turns off once the bathroom is less than this far above
+        the house humidity, even if it is still above the Humidity Off
+        Threshold. This stops a humid house from keeping the fan on for
+        hours. Keep it below the Humidity Delta, or the fan may cycle. Set it
+        to 0 to turn off only at the Humidity Off Threshold, as in v2.3.
+      default: 2
+      selector:
+        number:
+          min: 0
+          max: 20
+          unit_of_measurement: "%"
+          step: 0.5
     manual_override_duration:
       name: Manual Override Duration (minutes)
       description: Default time to keep fan running when turned on manually.
@@ -236,7 +295,9 @@ blueprint:
       description: >
         When the manual override timer ends, a humidity reading older than
         this is treated as stale, and the fan turns off as if the room were
-        dry. Pick a value above the longest gap your sensor leaves between
+        dry. A reading this old also can't turn the fan on through the
+        relative on rule (the bathroom rising more than the Humidity Delta
+        above the house). Pick a value above the longest gap your sensor leaves between
         reports when the humidity holds steady (many Zigbee sensors report at
         least hourly, and an MQTT sensor only records a report when the value
         changes).
@@ -249,16 +310,48 @@ blueprint:
           step: 5
           mode: box
 
+# Template triggers can't see the automation's variables, only these.
+trigger_variables:
+  tv_bathroom_humidity: !input bathroom_humidity
+  tv_indoor_humidity: !input indoor_humidity
+  tv_humidity_delta: !input humidity_delta
+  tv_humidity_off_delta: !input humidity_off_delta
+
 triggers:
   - trigger: numeric_state
     entity_id: !input bathroom_humidity
     above: !input humidity_on_threshold
     id: humidity_high
 
+  # Relative on rule (v2.4): the bathroom has risen more than the Humidity
+  # Delta above the house, whether or not it ever crossed the Humidity On
+  # Threshold. humidity_high fires only at that crossing, so a delta reached
+  # later (or a room that was already above the threshold) never turned the
+  # fan on. It fires when this becomes true.
+  - trigger: template
+    value_template: >-
+      {% set b = states(tv_bathroom_humidity) %}
+      {% set h = states(tv_indoor_humidity) %}
+      {{ is_number(b) and is_number(h)
+         and b | float - h | float > tv_humidity_delta | float(5) }}
+    id: humidity_above_house
+
   - trigger: numeric_state
     entity_id: !input bathroom_humidity
     below: !input humidity_off_threshold
     id: humidity_low
+
+  # Relative off rule (v2.4): the bathroom has come back to within the
+  # Humidity Off Delta of the house. It fires when that becomes true, and
+  # the branches below treat it exactly like humidity_low.
+  - trigger: template
+    value_template: >-
+      {% set b = states(tv_bathroom_humidity) %}
+      {% set h = states(tv_indoor_humidity) %}
+      {{ tv_humidity_off_delta | float(0) > 0
+         and is_number(b) and is_number(h)
+         and b | float - h | float < tv_humidity_off_delta | float(0) }}
+    id: humidity_near_house
 
   - trigger: state
     entity_id: !input fan_switch
@@ -291,6 +384,7 @@ variables:
   humidity_on_threshold: !input humidity_on_threshold
   humidity_off_threshold: !input humidity_off_threshold
   humidity_delta: !input humidity_delta
+  humidity_off_delta: !input humidity_off_delta
   manual_override_duration: !input manual_override_duration
   override_duration_helper: !input override_duration_helper
   run_on_timer: !input run_on_timer
@@ -306,16 +400,38 @@ variables:
   # Whether the run-on feature is enabled at all — the Fan Run-On Timer input
   # is optional, and its presence is what turns the feature on.
   run_on_configured: "{{ run_on_timer not in [none, ''] }}"
+  # The bathroom is within the Humidity Off Delta of the house (v2.4). False
+  # when either reading isn't a number, or when the off delta is 0.
+  near_house: >-
+    {% set b = states(bathroom_humidity) %}
+    {% set h = states(indoor_humidity) %}
+    {{ humidity_off_delta | float(0) > 0
+       and is_number(b) and is_number(h)
+       and b | float - h | float < humidity_off_delta | float(0) }}
+  # The bathroom reading was reported within the Stale Reading Limit (v2.4).
+  bathroom_fresh: >-
+    {% set s = states[bathroom_humidity] %}
+    {{ s is not none
+       and (now() - s.last_reported).total_seconds()
+           <= humidity_stale_minutes | float(180) * 60 }}
 
 actions:
   - choose:
-      # 💨 Turn fan on due to humidity
+      # 💨 Turn fan on due to humidity: the bathroom crossed the on threshold,
+      # or (v2.4) rose more than the delta above the house without crossing it
       - conditions:
           - condition: trigger
-            id: humidity_high
+            id:
+              - humidity_high
+              - humidity_above_house
           - condition: template
             value_template: >
               {{ states(bathroom_humidity) | float - states(indoor_humidity) | float > humidity_delta }}
+          # The relative trigger also fires when only the house reading
+          # changes, so a frozen bathroom reading could turn the fan on with
+          # nothing to turn it off. Ignore it when the reading is stale.
+          - condition: template
+            value_template: "{{ trigger.id == 'humidity_high' or bathroom_fresh }}"
           - condition: template
             value_template: "{{ not override_active }}"
         sequence:
@@ -385,7 +501,9 @@ actions:
       # turning off immediately, when a Fan Run-On Timer is configured.
       - conditions:
           - condition: trigger
-            id: humidity_low
+            id:
+              - humidity_low
+              - humidity_near_house
           - condition: template
             value_template: "{{ not override_active }}"
           - condition: template
@@ -401,7 +519,9 @@ actions:
       # timer configured — previous versions' behavior, unchanged)
       - conditions:
           - condition: trigger
-            id: humidity_low
+            id:
+              - humidity_low
+              - humidity_near_house
           - condition: template
             value_template: "{{ not override_active }}"
           - condition: template
@@ -426,9 +546,10 @@ actions:
               entity_id: "{{ fan_switch }}"
 
       # ⏲ Override expired — turn the fan off only if humidity has recovered
-      # to the off-threshold, matching the hysteresis used everywhere else
-      # (comparing against the on-threshold let the fan quit while still
-      # well above the level automatic control considers "clear").
+      # to the off-threshold or to within the off delta of the house,
+      # matching the off rule used everywhere else (comparing against the
+      # on-threshold let the fan quit while still well above the level
+      # automatic control considers "clear").
       - conditions:
           - condition: trigger
             id: override_expired
@@ -441,7 +562,8 @@ actions:
                  or not is_number(s.state)
                  or (now() - s.last_reported).total_seconds()
                     > humidity_stale_minutes | float(180) * 60
-                 or s.state | float < humidity_off_threshold | float }}
+                 or s.state | float < humidity_off_threshold | float
+                 or near_house }}
         sequence:
           - action: switch.turn_off
             target:

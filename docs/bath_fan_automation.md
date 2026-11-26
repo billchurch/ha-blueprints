@@ -1,6 +1,6 @@
 # 💨 Bath Fan Automation
 
-**Version:** 2.3  
+**Version:** 2.4  
 **Domain:** Automation  
 **Author:** billchurch  
 
@@ -54,17 +54,32 @@ To migrate:
 - **Stale Sensor Guard** (v2.3): When the override timer ends, the fan turns
   off if the humidity reading is unavailable, not a number, or older than the
   Stale Reading Limit, so a dead sensor can't leave the fan running
+- **Relative Turn-Off** (v2.4): The fan turns off once the bathroom is within
+  the Humidity Off Delta of the house, or below the Humidity Off Threshold,
+  whichever comes first. On a humid day the whole house can sit above the off
+  threshold; before v2.4 the fan then ran until someone turned it off
+- **Relative Turn-On** (v2.4): The fan also turns on whenever the bathroom
+  rises more than the Humidity Delta above the house, even if it never
+  crosses the Humidity On Threshold. Before v2.4 it turned on only at that
+  crossing, so a bathroom already above the threshold, or one that reached
+  the delta a little later, left the fan off. A manual override still blocks
+  it, and a stale bathroom reading can't start it this way
 
 ## 🔄 How It Works
 
 1. **Humidity Monitoring**: Continuously compares bathroom and house humidity
-2. **Smart Activation**: Fan turns on when humidity exceeds threshold + delta
+2. **Smart Activation**: Fan turns on when the bathroom crosses the on
+   threshold while more than the delta above the house, or (v2.4) whenever it
+   rises more than the delta above the house, threshold or not
 3. **Manual Override**: Turning the fan on by hand starts the override timer,
    which suspends humidity control while it runs
 4. **Early Cancel**: Turning the fan off by hand cancels the override
    immediately, so humidity control resumes right away
 5. **Auto Resume**: When the timer finishes, the fan turns off if humidity has
-   recovered; otherwise humidity control simply takes over again
+   recovered; otherwise humidity control simply takes over again.
+   "Recovered" means below the Humidity Off Threshold, or less than the
+   Humidity Off Delta above the house, whichever comes first. The same rule
+   applies when humidity drops and when the run-on countdown starts.
 6. **Optional Run-On**: If a Fan Run-On Timer is configured, the fan keeps
    running for the configured duration after humidity clears, instead of
    stopping immediately. A humidity rebound or a manual turn-off during the
@@ -100,13 +115,14 @@ the same way.
 | --- | --- | --- |
 | **Humidity On Threshold** | Trigger level for fan activation | 65% |
 | **Humidity Off Threshold** | Level to turn fan off | 62% |
-| **Humidity Delta** | Difference vs house humidity | 5% |
+| **Humidity Delta** | The fan turns on once the bathroom is more than this far above the house, threshold or not | 5% |
+| **Humidity Off Delta** | The fan also turns off once the bathroom is less than this far above the house; 0 turns the rule off | 2% |
 | **Manual Override Duration** | Default override time | 20 min |
 | **Override Duration Helper** | Input number for adjustable timer; overrides the above | None |
 | **Manual Override Flag** | Deprecated and ignored — see the upgrade notes | None |
 | **Fan Run-On Timer** | Timer helper; when set, enables the run-on behavior below | None |
 | **Run-On Duration** | Minutes to keep the fan running after humidity clears, when the timer above is set | 10 min |
-| **Stale Reading Limit** | A humidity reading older than this counts as stale when the override timer ends, and the fan turns off | 180 min |
+| **Stale Reading Limit** | A humidity reading older than this counts as stale: the fan turns off when the override timer ends, and the reading can't turn the fan on through the delta rule | 180 min |
 
 ## 🛠️ Setup Instructions
 
@@ -185,8 +201,10 @@ entities:
 ## 🎯 Usage Scenarios
 
 ### Automatic Operation
-- Shower starts → Humidity rises → Fan activates automatically
-- Shower ends → Humidity drops → Fan turns off when threshold met (or after
+- Shower starts → Humidity rises past the on threshold, or more than the
+  delta above the house → Fan activates automatically
+- Shower ends → Humidity drops below the off threshold, or to within the off
+  delta of the house → Fan turns off (or after
   the run-on duration, if a Fan Run-On Timer is configured)
 
 ### Manual Control
@@ -206,6 +224,11 @@ Create a separate timer for each bathroom:
 - Verify humidity sensors are reporting values
 - Check threshold settings match your environment
 - Ensure humidity delta is being exceeded
+- If the bathroom is humid but the fan stays off, check the bathroom sensor
+  has reported within the Stale Reading Limit; an old reading can't turn the
+  fan on through the delta rule
+- Before v2.4 the fan turned on only when the bathroom crossed the on
+  threshold, so a room already above it stayed off. Re-import the blueprint
 - Review automation traces for trigger details
 
 ### Manual Override Issues
@@ -220,7 +243,13 @@ Create a separate timer for each bathroom:
   humid, the sensor may be reporting less often than the Stale Reading Limit.
   Raise the limit above its longest gap between reports
 
+### Fan Runs for Hours on Humid Days
+- Before v2.4 the fan turned off only below the Humidity Off Threshold. When
+  the whole house is above it, re-import the blueprint to get the Humidity Off
+  Delta rule, and check the delta isn't set to 0
+
 ### Frequent Cycling
+- Keep the Humidity Off Delta well below the Humidity Delta
 - Increase gap between on/off thresholds
 - Adjust humidity delta for your climate
 - Consider longer minimum run times
